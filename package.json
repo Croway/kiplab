@@ -1,0 +1,17 @@
+{
+  "name": "kiplab",
+  "private": true,
+  "description": "Bar gymnastics (kipping pull-ups, chest-to-bar, toes-to-bar, bar muscle-ups) from one phone: a PWA",
+  "type": "module",
+  "scripts": {
+    "serve": "python3 -m http.server 8766 --bind 0.0.0.0",
+    "test": "node test/kip.test.mjs && node test/qr.test.mjs",
+    "icons": "node tools/render-icons.mjs",
+    "vendor": "./tools/fetch-vendor.sh",
+    "shared": "./tools/shared-check.sh"
+  },
+  "devDependencies": {
+    "jsqr": "1.4.0",
+    "playwright-core": "1.56.1"
+  }
+}

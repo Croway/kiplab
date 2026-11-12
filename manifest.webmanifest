@@ -1,0 +1,24 @@
+{
+  "id": "./",
+  "name": "Kip Lab",
+  "short_name": "Kip Lab",
+  "description": "Kipping pull-ups, chest-to-bar, toes-to-bar and bar muscle-ups from one phone video: reps against the standard, the force through the bar, how much the kip gives.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0d2219",
+  "theme_color": "#0d2219",
+  "categories": ["sports", "health", "fitness"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "share_target": {
+    "action": "./share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": { "files": [{ "name": "video", "accept": ["video/*", ".mp4", ".mov", ".webm"] }] }
+  }
+}

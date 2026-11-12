@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>track</title>
+<video id="v" playsinline muted></video>
+<script type="module">
+/* Body tracking over a whole video with the app's own modules (js/video.js, js/pose.js), for test/track.mjs:
+ * the landmarks of every frame, and some frames with the skeleton drawn on them. */
+import * as V from "../js/video.js";
+import * as Pose from "../js/pose.js";
+const BONES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28], [27, 31], [28, 32], [0, 7], [0, 8]];
+window.track = async (src, kind, every) => {
+  const video = document.getElementById("v");
+  const info = await V.load(video, src);
+  const fps = (await V.probeFps(video)) || 30;
+  const P = await Pose.load(kind);
+  Pose.beginRun(0);
+  const samples = [], shots = [];
+  const c = document.createElement("canvas"), k = 240 / info.W;
+  c.width = 240; c.height = Math.round(info.H * k);
+  const g = c.getContext("2d");
+  let n = 0;
+  await V.runFrames(video, {
+    start: 0, end: info.duration, fps,
+    onFrame: (t) => {
+      const pose = Pose.detect(P, video, t, info.W, info.H);
+      samples.push({ t, pose });
+      if (n++ % every === 0) {
+        g.drawImage(video, 0, 0, c.width, c.height);
+        if (pose) {
+          g.lineWidth = 2;
+          for (const [a, b] of BONES) { g.strokeStyle = a % 2 ? "#ff4040" : "#40c0ff"; if (a === 23 && b === 24 || a === 11 && b === 12) g.strokeStyle = "#ffff40"; g.beginPath(); g.moveTo(pose[a].x * k, pose[a].y * k); g.lineTo(pose[b].x * k, pose[b].y * k); g.stroke(); }
+        }
+        g.fillStyle = "#fff"; g.font = "12px sans-serif"; g.fillText(t.toFixed(2), 4, 14);
+        shots.push(c.toDataURL("image/jpeg", 0.8));
+      }
+    },
+  });
+  return { W: info.W, H: info.H, duration: info.duration, fps, model: `${P.kind} on ${P.delegate}`, samples, shots };
+};
+window.ready = true;
+</script>

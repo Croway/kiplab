@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+<title>Kip Lab</title>
+<meta name="description" content="Kipping pull-ups, chest-to-bar, toes-to-bar and bar muscle-ups from one phone video: reps against the standard, the force through the bar, and how much the kip gives.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="canonical" href="https://croway.github.io/kiplab/">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="top">
+  <img class="logo" src="icons/icon.svg" alt="" width="30" height="30">
+  <h1>Kip Lab</h1>
+  <p>Bar gymnastics from one phone</p>
+  <div class="top-actions">
+    <button id="btnInstall" type="button" hidden>Install</button>
+    <button id="btnShareApp" type="button" aria-haspopup="dialog">Share app</button>
+  </div>
+</header>
+
+<dialog id="shareDlg" class="sheet" aria-labelledby="shareTitle">
+  <h2 id="shareTitle">Share Kip Lab</h2>
+  <div class="qr" id="shareQr"></div>
+  <p class="share-link" id="shareLink"></p>
+  <p class="hint" id="shareNote"></p>
+  <div class="actions">
+    <button id="btnShareSend" class="primary" type="button">Send link</button>
+    <button id="btnShareCopy" type="button">Copy link</button>
+    <button id="btnShareClose" type="button">Done</button>
+  </div>
+</dialog>
+
+<main>
+  <!-- 1 · get a video -->
+  <section id="start" class="panel">
+    <h2>Film the set</h2>
+    <figure class="guide-fig">
+      <svg viewBox="0 0 340 236" role="img" aria-labelledby="guideTitle guideDesc">
+        <title id="guideTitle">Where to put the phone, seen from above</title>
+        <desc id="guideDesc">The athlete hangs from the bar in the middle, facing up the page. Best: within 30 degrees of side-on, along the bar, about 4 metres away, just off the rack's uprights. Fine: 30 to 60 degrees. Avoid: in front or behind.</desc>
+        <g class="zone bad"><path d="M170 112 L122 28.9 A96 96 0 0 1 218 28.9 Z"/><path d="M170 112 L218 195.1 A96 96 0 0 1 122 195.1 Z"/></g>
+        <g class="zone fine"><path d="M170 112 L218 28.9 A96 96 0 0 1 253.1 64 Z"/><path d="M170 112 L253.1 160 A96 96 0 0 1 218 195.1 Z"/><path d="M170 112 L122 195.1 A96 96 0 0 1 86.9 160 Z"/><path d="M170 112 L86.9 64 A96 96 0 0 1 122 28.9 Z"/></g>
+        <g class="zone best"><path d="M170 112 L253.1 64 A96 96 0 0 1 253.1 160 Z"/><path d="M170 112 L86.9 160 A96 96 0 0 1 86.9 64 Z"/></g>
+        <circle class="ring" cx="170" cy="112" r="96"/>
+        <text class="lbl" x="170" y="11" text-anchor="middle">front</text>
+        <text class="lbl" x="170" y="231" text-anchor="middle">back</text>
+        <text class="lbl" x="276" y="100">side-on</text>
+        <text class="lbl" x="64" y="100" text-anchor="end">side-on</text>
+        <text class="lbl dim" x="246" y="214">about 4 m</text>
+        <line class="bar" x1="40" y1="112" x2="300" y2="112"/>
+        <rect class="rack" x="45" y="106" width="12" height="12" rx="2"/><rect class="rack" x="283" y="106" width="12" height="12" rx="2"/>
+        <text class="lbl dim" x="289" y="132" text-anchor="middle">rack</text>
+        <ellipse class="body" cx="170" cy="112" rx="24" ry="9"/>
+        <circle class="body" cx="170" cy="112" r="8"/>
+        <path class="nose" d="M165 106 L170 96 L175 106 Z"/>
+        <circle class="hand" cx="142" cy="112" r="4"/><circle class="hand" cx="198" cy="112" r="4"/>
+        <g transform="translate(266 38) rotate(-52)"><rect class="phone" x="-7" y="-12" width="14" height="24" rx="3"/><circle class="lens" cx="0" cy="-7" r="2"/></g>
+        <text class="lbl strong" x="282" y="30">here</text>
+      </svg>
+      <figcaption>
+        <ul class="key-list">
+          <li><span class="swatch best"></span><span><b>Best:</b> within 30° of side-on, the bar pointing at you. If the rack is in the way, step a little in front of it.</span></li>
+          <li><span class="swatch fine"></span><span><b>Fine:</b> 30–60°. Reps, timing and force hold; swing and hollow/arch get rougher.</span></li>
+          <li><span class="swatch bad"></span><span><b>Avoid:</b> in front or behind: only reps and timing.</span></li>
+        </ul>
+      </figcaption>
+    </figure>
+    <ol class="tips">
+      <li><b>About 4 m away, phone at chest height and level</b>, leaning on something still (a box, a plate). Portrait, 1× zoom.</li>
+      <li><b>The whole swing in frame:</b> hands on the bar at the top, feet at the back of the swing at the bottom, with a margin.</li>
+      <li><b>60 fps</b> (Record does it), good light, nobody walking in between.</li>
+      <li><b>Hang still for 2–3 s</b> before the first kip: it's the body's resting point.</li>
+    </ol>
+    <p class="hint">Then choose just the set on the timeline. Kipping and strict pull-ups, chest-to-bar, toes-to-bar, bar muscle-ups and kip swings are recognised on their own.</p>
+    <div class="actions">
+      <button id="btnRecord" class="primary" type="button">Record</button>
+      <label class="button" for="fileInput">Choose a video</label>
+      <button id="btnGallery" type="button" hidden>Gallery</button>
+    </div>
+    <input id="fileInput" type="file" accept="video/*" hidden>
+    <input id="captureInput" type="file" accept="video/*" capture="environment" hidden>
+    <p class="hint" id="recordHint">Record opens the phone's camera app, which films at 60 fps. If it starts on the front camera, flip to the back one; the first time, pick <b>FHD 60</b> at the top right (it's remembered). Or film in the camera app and choose the video.</p>
+    <button id="btnCamLevel" class="link" type="button" hidden>In-app camera with framing marks and a level (30 fps)</button>
+    <p class="hint" id="installHint" hidden>To keep it on the home screen: Safari's Share button → <b>Add to Home Screen</b>.</p>
+    <p class="hint" id="shareHint" hidden>Tip: in your Gallery, share a video to <b>Kip Lab</b> to open it here.</p>
+  </section>
+
+  <!-- the gallery: every analysed set kept on this phone -->
+  <section id="gallery" hidden>
+    <div class="screen-head">
+      <button id="btnGalBack" class="back" type="button" aria-label="Back">‹</button>
+      <h2>Gallery</h2>
+      <span class="hint num" id="galSummary"></span>
+    </div>
+    <div class="chips" id="galFilters" role="group" aria-label="Show"></div>
+    <p class="hint" id="galEmpty" hidden>Every set you analyse is kept here, on this phone, to open again.</p>
+    <ul class="lifts" id="galList"></ul>
+    <p class="hint">Tap a set to see its analysis again. Tick sets to delete them.</p>
+    <div class="selbar" id="galBar" hidden>
+      <span id="galBarText"></span>
+      <button id="btnGalDelete" type="button">Delete</button>
+    </div>
+  </section>
+
+  <!-- in-app camera -->
+  <section id="camera" class="panel" hidden>
+    <div class="viewer cam" id="camViewer">
+      <video id="camVideo" playsinline muted></video>
+      <div class="guide" aria-hidden="true">
+        <span class="mark bar"><i>bar about here</i></span>
+        <span class="mark feet"><i>feet at the back of the swing above here</i></span>
+      </div>
+      <div class="level" id="level" aria-live="polite"><span class="bubble"></span><span class="read" id="levelRead">Level: —</span></div>
+      <span class="rec-badge" id="recBadge" hidden>● REC <span id="recTime">0.0</span> s</span>
+    </div>
+    <p class="hint" id="camInfo"></p>
+    <div class="actions">
+      <button id="btnRecToggle" class="primary rec" type="button">Start recording</button>
+      <button id="btnCamClose" type="button">Cancel</button>
+    </div>
+  </section>
+
+  <!-- the video: choose the set, analyse, replay -->
+  <section id="work" hidden>
+    <div class="viewer" id="viewer">
+      <video id="video" playsinline muted preload="auto"></video>
+      <canvas id="overlay"></canvas>
+      <div class="hud" id="hud" hidden></div>
+    </div>
+    <div class="timeline" id="timeline" role="group" aria-label="Part of the video to analyse"></div>
+    <div class="scrub">
+      <button id="btnPrev" type="button" aria-label="Back one frame">‹</button>
+      <button id="btnNext" type="button" aria-label="Forward one frame">›</button>
+      <span id="timeRead" class="num" aria-live="polite"></span>
+      <button id="btnPreview" class="play" type="button" aria-label="Play the chosen part">Play</button>
+    </div>
+
+    <div id="mark" class="panel">
+      <p class="instr" id="markInstr"></p>
+      <div class="actions">
+        <button id="btnAnalyse" class="primary" type="button" disabled>Analyse</button>
+        <button id="btnNew" type="button">New video</button>
+      </div>
+      <p class="hint" id="videoInfo"></p>
+    </div>
+
+    <div id="running" class="panel" hidden>
+      <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="prog"><div id="progBar"></div></div>
+      <p id="progText" class="hint">Analysing…</p>
+      <button id="btnCancel" type="button">Cancel</button>
+    </div>
+
+    <div id="results" hidden>
+      <div class="replay">
+        <button id="btnPlay" type="button" class="primary">Play</button>
+        <div class="seg" role="group" aria-label="Replay speed" id="rates">
+          <button type="button" data-rate="0.25" aria-pressed="true">¼×</button>
+          <button type="button" data-rate="0.5" aria-pressed="false">½×</button>
+          <button type="button" data-rate="1" aria-pressed="false">1×</button>
+        </div>
+      </div>
+      <div class="res-head">
+        <h2 id="resTitle"></h2>
+        <p class="hint" id="resSub"></p>
+        <p class="hint" id="resSaved"></p>
+        <div class="res-picks">
+          <label class="inline">Movement
+            <select id="moveSel">
+              <option value="auto">Auto</option><option value="pullup">Pull-up</option><option value="c2b">Chest-to-bar</option>
+              <option value="t2b">Toes-to-bar</option><option value="bmu">Bar muscle-up</option><option value="swing">Kip swing</option>
+            </select>
+          </label>
+          <label class="inline num-pick">Height
+            <input id="heightCm" type="number" inputmode="numeric" min="120" max="230" step="1" placeholder="175"> cm
+          </label>
+          <label class="inline num-pick">Bodyweight
+            <input id="kg" type="number" inputmode="decimal" min="25" max="200" step="0.5" placeholder="–"> kg
+          </label>
+        </div>
+      </div>
+      <div class="tiles" id="tiles"></div>
+      <ul class="notes" id="notes"></ul>
+
+      <article class="card" id="repsCard" hidden>
+        <h3>Reps</h3>
+        <p class="sub">Tap a rep to jump to it. ✓ meets the standard, ? too close to call, ✗ likely no-rep.</p>
+        <div class="table-wrap"><table class="table reps" id="repsTable"></table></div>
+        <p class="hint" id="repsNote"></p>
+      </article>
+
+      <article class="card">
+        <h3>Checks</h3>
+        <p class="sub">What each rests on: the movement's <b>standard</b>, <b>physics</b> measured on your reps, or a <b>coaching</b> rule. Starting thresholds, to tune with your coach.</p>
+        <ul class="checks" id="checks"></ul>
+      </article>
+
+      <article class="card">
+        <h3>Energy · what the muscles put in</h3>
+        <p class="sub">The body's energy above the still hang: all of it, and the part that is height. It rises only when the muscles add some. Drag across it to scrub.</p>
+        <div class="chart"><canvas id="energyChart" tabindex="0" aria-label="Energy over time"></canvas><div class="tip" hidden></div></div>
+        <ul class="legend"><li><span class="sw" style="background: var(--s1)"></span>Total</li><li><span class="sw" style="background: var(--s3)"></span>Height</li></ul>
+      </article>
+
+      <article class="card">
+        <h3>Force through the bar</h3>
+        <p class="sub">In bodyweights: 1 is hanging still. Peaks come with the kip's snap and the pull. Shaded by stage: drive, then down.</p>
+        <div class="chart"><canvas id="forceChart" tabindex="0" aria-label="Force through the bar over time"></canvas><div class="tip" hidden></div></div>
+      </article>
+
+      <article class="card">
+        <h3>Body shape · hollow and arch</h3>
+        <p class="sub">Hips and shoulders: + hollow (flexed, legs or arms ahead of the body line), − arch. The kip lives in how far and how fast these swing.</p>
+        <div class="chart"><canvas id="shapeChart" tabindex="0" aria-label="Hip and shoulder angles over time"></canvas><div class="tip" hidden></div></div>
+        <ul class="legend"><li><span class="sw" style="background: var(--s2)"></span>Hips</li><li><span class="sw" style="background: var(--s5)"></span>Shoulders</li></ul>
+      </article>
+
+      <article class="card">
+        <h3>Around the bar · side view</h3>
+        <p class="sub" id="pathSub">The centre of mass, coloured by speed, and the point that has to reach the bar. True scale. Drag across it to scrub.</p>
+        <div class="chart"><canvas id="pathChart" tabindex="0" aria-label="Path around the bar"></canvas><div class="tip" hidden></div></div>
+        <div class="key"><span>Speed</span><span class="num">0</span><span class="ramp" id="rampKey"></span><span class="num" id="rampMax"></span></div>
+      </article>
+
+      <article class="card">
+        <h3>Filming</h3>
+        <p class="sub">How far these numbers can be trusted, and what would make them better next time.</p>
+        <ul class="checks" id="filmChecks"></ul>
+      </article>
+
+      <article class="card">
+        <h3>Every measurement</h3>
+        <table class="table" id="table"></table>
+      </article>
+
+      <div class="actions wrap">
+        <button id="btnFlip" type="button">Flip direction</button>
+        <button id="btnCsv" type="button">Export CSV</button>
+        <button id="btnJson" type="button">Export JSON</button>
+        <button id="btnSaveVideo" type="button" hidden>Save video</button>
+        <button id="btnAgain" type="button">Choose again</button>
+        <button id="btnNew2" type="button">New video</button>
+        <button id="btnGallery2" type="button">Gallery</button>
+        <button id="btnDelete" type="button" hidden>Delete</button>
+      </div>
+    </div>
+  </section>
+
+  <details class="settings panel" id="settings">
+    <summary>Settings</summary>
+    <div class="grid">
+      <label>Video speed
+        <select id="slowmo">
+          <option value="1" selected>Real time</option>
+          <option value="2">Slowed 2×</option><option value="4">Slowed 4× (120 fps)</option>
+          <option value="8">Slowed 8× (240 fps)</option>
+        </select>
+      </label>
+      <label>Athlete faces
+        <select id="facing"><option value="0" selected>Auto</option><option value="-1">Left</option><option value="1">Right</option></select>
+      </label>
+      <label>Body tracking
+        <select id="poseModel">
+          <option value="full" selected>Accurate</option>
+          <option value="heavy">Most accurate (slower, 29 MB)</option>
+          <option value="lite">Faster</option>
+        </select>
+      </label>
+    </div>
+    <p class="hint">Body tracking downloads a 6–29 MB model the first time. Everything runs on this device; nothing is uploaded.</p>
+  </details>
+</main>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
