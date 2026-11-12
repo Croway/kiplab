@@ -315,3 +315,5 @@ dialog.sheet .actions > * { flex: 1 1 auto; }
 .table.reps td.maybe { color: var(--warning); font-weight: 700; }
 .checks .basis { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--muted); margin-right: 6px; }
 .checks .ico.serious + div .ttl { color: var(--ink); }
+/* the header's logo: the browser icon (the drawing fills it), a size up from Bar Path's */
+.top .logo { width: 40px; height: 40px; border-radius: 9px; }
