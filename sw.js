@@ -5,7 +5,7 @@
  *  - POST ./share (the manifest's share target): keeps the shared video, then opens the app with ?shared=1.
  */
 const APP = "kiplab";
-const SHELL = `${APP}-shell-v1`;
+const SHELL = `${APP}-shell-v2`;
 const VENDOR = `${APP}-vendor-0.10.21`;
 const SHARE = `${APP}-share`;
 const SHELL_FILES = [
@@ -60,7 +60,9 @@ async function networkFirst(req, url) {
   const c = await caches.open(SHELL);
   try {
     const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 4000);
-    const res = await fetch(req, { signal: ctl.signal });
+    // ask the server every time (a cheap 304 when nothing changed): GitHub Pages lets browsers keep files 10 min,
+    // and an update (a new icon) would otherwise show only after that
+    const res = await fetch(req, { signal: ctl.signal, cache: "no-cache" });
     clearTimeout(timer);
     if (res.ok && !url.search) await c.put(req, res.clone());
     return res;
