@@ -5,13 +5,13 @@
  *  - POST ./share (the manifest's share target): keeps the shared video, then opens the app with ?shared=1.
  */
 const APP = "kiplab";
-const SHELL = `${APP}-shell-v3`;
+const SHELL = `${APP}-shell-v4`;
 const VENDOR = `${APP}-vendor-0.10.21`;
 const SHARE = `${APP}-share`;
 const SHELL_FILES = [
   "./", "index.html", "manifest.webmanifest", "css/app.css",
   "js/app.js", "js/kip.js", "js/body.js", "js/signal.js", "js/kipcharts.js", "js/chartkit.js", "js/overlay.js", "js/pose.js", "js/recorder.js", "js/video.js",
-  "js/trim.js", "js/share.js", "js/qr.js", "js/store.js", "js/gallery.js", "js/i18n.js", "js/clip.js", "locales/en.js",
+  "js/trim.js", "js/share.js", "js/qr.js", "js/store.js", "js/gallery.js", "js/i18n.js", "js/clip.js", "locales/en.js", "locales/it.js",
   "icons/icon.svg", "icons/favicon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png",
 ];
 const VENDOR_FILES = [
