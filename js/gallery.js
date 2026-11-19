@@ -35,15 +35,17 @@ const tileText = (t) => {
   if (t.unit) return /^[°%]/.test(t.unit) ? `${t.value}${t.unit}` : `${t.value} ${t.unit}`;
   return t.label === tr("tile.swings.label") ? tr("count.swings", { n: Number(t.value) }) : `${t.value} ${word}`;
 };
-/** the title's "3 reps": the same words kip.js put there, in this language */
-const isRepCount = (q) => { const m = q.match(/\d+/); return !!m && q === tr("count.reps", { n: Number(m[0]) }); };
-/** a card's lines: the movement first, then its numbers, then what the title adds, without saying the rep count
- * twice. (Bar Path puts the load in the title; here kg is bodyweight, so it stays with the time.) */
+/** the counts the title ends with ("3 reps", "5 swings"), by the tile that already says them */
+const COUNTS = { "tile.reps.label": "count.reps", "tile.swings.label": "count.swings" };
+/** the title's count: the same words kip.js put there, in this language */
+const isCount = (q, key) => { const m = q.match(/\d+/); return !!m && q === tr(key, { n: Number(m[0]) }); };
+/** a card's lines: the movement first, then its numbers, then what the title adds, without saying the rep or swing
+ * count twice. (Bar Path puts the load in the title; here kg is bodyweight, so it stays with the time.) */
 export function cardLines(c) {
   const [name, ...rest] = String(c.title || "").split(" · ");
   const nums = (c.tiles || []).map(tileText);
-  const counted = (c.tiles || []).some((t) => t.label === tr("tile.reps.label"));
-  const extra = rest.filter((q) => !(counted && isRepCount(q)));
+  const said = Object.entries(COUNTS).filter(([label]) => (c.tiles || []).some((t) => t.label === tr(label))).map(([, key]) => key);
+  const extra = rest.filter((q) => !said.some((key) => isCount(q, key)));
   return { title: name, nums: [...nums, ...extra].join(" · ") };
 }
 

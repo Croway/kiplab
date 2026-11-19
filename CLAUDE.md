@@ -44,8 +44,11 @@ Signal helpers are in `signal.js` and chart basics in `chartkit.js` (extracted f
 
 Keeping only the analysed part (`clip.js`, shared): a saved video is cut losslessly (its samples copied into a new
 MP4, nothing decoded) from the keyframe at or before `start` to `end`; `store.js` `planTrim()` / `applyTrim()` cut,
-then replace the video and shift the data (samples' `t`, `start`, `end`) by the cut's offset. Offered on a saved
-set's results (when it frees 5% or more) and for any ticked sets in the gallery.
+then replace the video and shift the data (samples' `t`, `start`, `end`) by the cut's offset. `applyTrim()` reads the
+card and data again rather than taking the plan's copy (the results plan the cut when they open: a bodyweight entered
+since was lost), and refuses a plan whose part has moved; the results flush a queued settings save first
+(`flushSave()`). Offered on a saved set's results (when it frees 5% or more) and for any ticked sets in the gallery.
+Gallery cards say the rep or swing count once (the tile's, not the title's again).
 
 Text: everything the app shows comes from `locales/en.js` through `tr()` / `num()` (`i18n.js`, shared); static HTML
 through `data-i18n*` and `applyDom()` at startup. Another language = `locales/<lang>.js` with the same keys, listed in

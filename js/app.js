@@ -516,8 +516,9 @@ for (const b of document.querySelectorAll("#rates button")) {
 $("btnFlip").addEventListener("click", () => { S.facingOverride = -S.R.facing; showResults(); });
 $("moveSel").addEventListener("change", () => { if (S.mode === "results") showResults(); });
 let numTimer = 0;
+const numDone = () => { numTimer = 0; saveAthlete(); if (S.mode === "results") showResults(); };
 for (const id of ["kg", "heightCm"]) {
-  $(id).addEventListener("input", () => { clearTimeout(numTimer); numTimer = setTimeout(() => { saveAthlete(); if (S.mode === "results") showResults(); }, 350); });
+  $(id).addEventListener("input", () => { clearTimeout(numTimer); numTimer = setTimeout(numDone, 350); });
 }
 $("btnAgain").addEventListener("click", () => { stopPlayback(); setMode("mark"); TL.setRange(S.start, endT()); seekTo(S.start); });
 for (const id of ["btnNew", "btnNew2"]) $(id).addEventListener("click", () => { stopPlayback(); setMode("start"); galleryCount(); });
@@ -604,7 +605,16 @@ async function saveSet(fresh) {
   }
 }
 let saveTimer = 0;
-const queueSave = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => saveSet(false), 400); };
+const queueSave = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => { saveTimer = 0; saveSet(false); }, 400); };
+/** a queued save done now, with a bodyweight or height still being typed: before something reads the saved set back
+ * (keeping only the analysed part) */
+const flushSave = async () => {
+  if (numTimer) { clearTimeout(numTimer); numDone(); }
+  if (!saveTimer) return;
+  clearTimeout(saveTimer);
+  saveTimer = 0;
+  await saveSet(false);
+};
 
 const GAL = new Gallery(
   { list: $("galList"), filters: $("galFilters"), summary: $("galSummary"), status: $("galStatus"), empty: $("galEmpty"), bar: $("galBar"), barText: $("galBarText"), remove: $("btnGalDelete"), trim: $("btnGalTrim") },
@@ -681,6 +691,7 @@ $("btnTrim").addEventListener("click", async () => {
   if (!confirm(ask)) return;
   $("btnTrim").disabled = true;
   try {
+    await flushSave(); // settings changed a moment ago go with it
     await Store.applyTrim(p);
     const got = await Store.get(p.card.id);
     // open it again on the shorter video (its times moved with it); no new history entry
