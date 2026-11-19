@@ -103,6 +103,7 @@ if (!r.error) {
 }
 // share: the QR code reads back as the app's address
 await page.evaluate(() => window.scrollTo(0, 0));
+await page.evaluate(() => { document.getElementById("settings").open = true; }); // Share app sits in Settings
 await page.click("#btnShareApp");
 await page.waitForSelector("#shareDlg[open]");
 await page.screenshot({ path: `${outDir}/06-share.png` });

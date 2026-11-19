@@ -1,20 +1,21 @@
 /* The results' charts: the centre of mass's path around the bar (side view, true scale), and time series (energy,
  * force through the bar, body shape) shaded by rep stage. All scrub the video. */
-import { tok, clamp, rampStops, rampAt, setup, ticks, fmt, dot, label } from "./chartkit.js";
+import { tok, clamp, rampStops, rampAt, setup, ticks, fmt, dot, label, dotBox } from "./chartkit.js";
+import { tr, num } from "./i18n.js";
 
-/** the point that has to reach the bar, by movement */
-export const GOAL = { pullup: ["chin", "Chin"], c2b: ["sh", "Shoulders"], bmu: ["sh", "Shoulders"], t2b: ["toe", "Toes"], swing: ["toe", "Toes"] };
+/** the point that has to reach the bar, by movement: its key in the plane (R.pl); in words: tr(`goal.${key}`) */
+export const GOAL = { pullup: "chin", c2b: "sh", bmu: "sh", t2b: "toe", swing: "toe" };
 export const where = (R, i) => {
   const r = R.repOf[i];
-  if (!r) return "Swing";
+  if (!r) return tr("where.swing");
   const s = R.stages.find((q) => q.rep === r && i >= q.i0 && i <= q.i1);
-  return `Rep ${r}${s ? ` · ${s.name}` : ""}`;
+  return s ? tr("where.repStage", { n: r, stage: s.name }) : tr("where.rep", { n: r });
 };
 
 /* ------------------------------------------------------------------ path around the bar */
 export function drawPath(canvas, R, cursor) {
   const w0 = canvas.parentElement.clientWidth;
-  const [gk, gname] = GOAL[R.move] || GOAL.pullup;
+  const gk = GOAL[R.move] || GOAL.pullup;
   const G = R.pl[gk];
   let fl = -0.2, fr = 0.2, ub = 0.15, ul = -0.3, vTop = 0;
   for (let i = 0; i < R.n; i++) {
@@ -45,9 +46,9 @@ export function drawPath(canvas, R, cursor) {
     ctx.fillText(v > 0 ? `+${fmt(v, 1)}` : fmt(v, 1), px(v), h - m.b + 5);
   }
   ctx.fillStyle = tok("--muted"); ctx.textBaseline = "top";
-  ctx.textAlign = "left"; ctx.fillText("m from the bar", 4, 2);
-  ctx.fillText("← back", m.l, h - 13);
-  ctx.textAlign = "right"; ctx.fillText("forward →", w - m.r, h - 13);
+  ctx.textAlign = "left"; ctx.fillText(tr("chart.fromBar"), 4, 2);
+  ctx.fillText(tr("chart.back"), m.l, h - 13);
+  ctx.textAlign = "right"; ctx.fillText(tr("chart.forward"), w - m.r, h - 13);
 
   // the goal point's path, thin; the centre of mass's, coloured by speed
   ctx.lineCap = "round"; ctx.lineJoin = "round";
@@ -60,18 +61,18 @@ export function drawPath(canvas, R, cursor) {
     ctx.strokeStyle = rampAt(stops, R.speed[i] / vTop);
     ctx.beginPath(); ctx.moveTo(px(R.comF[i - 1]), py(R.comU[i - 1])); ctx.lineTo(px(R.comF[i]), py(R.comU[i])); ctx.stroke();
   }
-  // the bar, end-on
+  // the bar, end-on, and each rep's top: every mark first, then the labels around them
   ctx.beginPath(); ctx.arc(px(0), py(0), 5, 0, 7); ctx.fillStyle = tok("--surface"); ctx.fill();
   ctx.lineWidth = 2.5; ctx.strokeStyle = tok("--ink"); ctx.stroke();
-  label(ctx, "bar", px(0), py(0), "right", w);
-  // each rep's top
-  const ink = tok("--ink");
-  for (const r of R.reps) { dot(ctx, px(R.comF[r.cTop]), py(R.comU[r.cTop]), 3.5, ink); label(ctx, String(r.n), px(R.comF[r.cTop]), py(R.comU[r.cTop]), "right", w); }
+  const ink = tok("--ink"), placed = [dotBox(px(0), py(0), 6)];
+  for (const r of R.reps) { dot(ctx, px(R.comF[r.cTop]), py(R.comU[r.cTop]), 3.5, ink); placed.push(dotBox(px(R.comF[r.cTop]), py(R.comU[r.cTop]), 3.5)); }
+  label(ctx, tr("chart.bar"), px(0), py(0), "right", w, placed);
+  for (const r of R.reps) label(ctx, String(r.n), px(R.comF[r.cTop]), py(R.comU[r.cTop]), "right", w, placed);
   if (cursor !== null) {
     dot(ctx, px(G.f[cursor]), py(G.u[cursor]), 3.5, tok("--ink-2"));
     dot(ctx, px(R.comF[cursor]), py(R.comU[cursor]), 5, tok("--accent"));
   }
-  return { px, py, vTop, stops, gname };
+  return { px, py, vTop, stops, goal: gk };
 }
 export function pathHit(geo, R, x, y) {
   let best = 0, bd = Infinity;
@@ -87,7 +88,12 @@ export function pathHit(geo, R, x, y) {
 export function drawSeries(canvas, R, cursor, { lines, unit, d = 1, ref = null, lo = Infinity, hi = -Infinity, h = 200 }) {
   const { ctx, w } = setup(canvas, h);
   const t = (i) => i / R.fs;
-  for (const L of lines) for (let i = 0; i < R.n; i++) { lo = Math.min(lo, L.v[i]); hi = Math.max(hi, L.v[i]); }
+  // the scale fits the reps (from half a second before the first stage to half a second after the last): a jump
+  // onto the bar or a drop off it, outside them, would otherwise set it and squash the reps; it's clipped instead
+  const pad0 = Math.round(0.5 * R.fs);
+  const a = R.stages.length ? Math.max(0, Math.min(...R.stages.map((s) => s.i0)) - pad0) : 0;
+  const b = R.stages.length ? Math.min(R.n - 1, Math.max(...R.stages.map((s) => s.i1)) + pad0) : R.n - 1;
+  for (const L of lines) for (let i = a; i <= b; i++) { lo = Math.min(lo, L.v[i]); hi = Math.max(hi, L.v[i]); }
   if (ref !== null) { lo = Math.min(lo, ref); hi = Math.max(hi, ref); }
   const pad = 0.08 * (hi - lo || 1);
   lo -= pad; hi += pad;
@@ -107,10 +113,15 @@ export function drawSeries(canvas, R, cursor, { lines, unit, d = 1, ref = null, 
     ctx.fillStyle = tok("--muted"); ctx.textAlign = "right"; ctx.textBaseline = "middle";
     ctx.fillText(fmt(v, d), m.l - 6, py(v));
   }
+  // time ticks, leaving room at the right end for the unit
+  const unitX = w - m.r - ctx.measureText("s").width - 6;
   for (const v of ticks(0, t(R.n - 1), 6)) {
+    const text = fmt(v, 1);
+    if (px(v) + ctx.measureText(text).width / 2 > unitX) continue;
     ctx.fillStyle = tok("--muted"); ctx.textAlign = "center"; ctx.textBaseline = "top";
-    ctx.fillText(fmt(v, 1), px(v), h - m.b + 5);
+    ctx.fillText(text, px(v), h - m.b + 5);
   }
+  ctx.fillStyle = tok("--muted");
   ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillText(unit, 4, 0);
   ctx.textAlign = "right"; ctx.fillText("s", w - m.r, h - m.b + 5);
   if (ref !== null) {
@@ -118,6 +129,8 @@ export function drawSeries(canvas, R, cursor, { lines, unit, d = 1, ref = null, 
     ctx.beginPath(); ctx.moveTo(m.l, py(ref)); ctx.lineTo(w - m.r, py(ref)); ctx.stroke(); ctx.setLineDash([]);
   }
   ctx.lineJoin = "round"; ctx.lineCap = "round";
+  ctx.save();
+  ctx.beginPath(); ctx.rect(m.l, m.t - 3, w - m.l - m.r, h - m.t - m.b + 6); ctx.clip(); // values past the scale
   for (const L of lines) {
     ctx.strokeStyle = tok(L.color); ctx.lineWidth = L.width || 2;
     if (L.dash) ctx.setLineDash(L.dash);
@@ -126,11 +139,12 @@ export function drawSeries(canvas, R, cursor, { lines, unit, d = 1, ref = null, 
     ctx.stroke();
     ctx.setLineDash([]);
   }
+  ctx.restore();
   for (const r of R.reps) { ctx.fillStyle = tok("--muted"); ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillText(String(r.n), px(t(r.top)), m.t - 14); }
   if (cursor !== null) {
     ctx.strokeStyle = tok("--ink-2"); ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(Math.round(px(t(cursor))) + 0.5, m.t); ctx.lineTo(Math.round(px(t(cursor))) + 0.5, h - m.b); ctx.stroke();
-    for (const L of lines) dot(ctx, px(t(cursor)), py(L.v[cursor]), 3.5, tok(L.color));
+    for (const L of lines) dot(ctx, px(t(cursor)), clamp(py(L.v[cursor]), m.t, h - m.b), 3.5, tok(L.color));
   }
   return { m, w, n: R.n };
 }
@@ -143,10 +157,10 @@ export function seriesHit(geo, x) {
 export function fillTip(tip, R, i) {
   tip.replaceChildren();
   const b = document.createElement("b");
-  b.textContent = `${R.Fb[i].toFixed(2)}× bodyweight`;
+  b.textContent = tr("tip.force", { f: num(R.Fb[i], 2) });
   tip.append(b);
-  const E = R.kg ? `${Math.round(R.Er[i] * R.kg)} J` : `${R.Er[i].toFixed(1)} J/kg`;
-  for (const text of [`energy ${E} · ${R.speed[i].toFixed(2)} m/s`, `hips ${Math.round(R.hip[i])}° · shoulders ${Math.round(R.shoulder[i])}°`, `${(i / R.fs).toFixed(2)} s · ${where(R, i)}`]) {
+  const E = R.kg ? `${Math.round(R.Er[i] * R.kg)} J` : `${num(R.Er[i], 1)} J/kg`;
+  for (const text of [tr("tip.energy", { energy: E, v: num(R.speed[i], 2) }), tr("tip.angles", { hip: Math.round(R.hip[i]), sh: Math.round(R.shoulder[i]) }), tr("tip.when", { t: num(i / R.fs, 2), where: where(R, i) })]) {
     const r = document.createElement("div");
     r.className = "row";
     r.textContent = text;

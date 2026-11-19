@@ -15,7 +15,7 @@ gitignored). Everything runs on the device; nothing is uploaded. Publishing (whe
 
 ```bash
 npm run vendor && npm run serve          # dev server on :8766 (Bar Path uses :8765)
-npm test                                 # analysis vs the simulator + QR read-back (must pass)
+npm test                                 # analysis vs the simulator + QR read-back + cutting videos (ffmpeg; must pass)
 npm run shared                           # shared files vs ../barpath: identical / adapted / extracted
 node test/track.mjs clip.mp4 out/clip    # MediaPipe over a real clip → out/clip.samples.json + contact sheet
 node test/run.mjs out/clip.samples.json --from 0.5 --to 9 [--height 175] [--metrics]
@@ -42,6 +42,15 @@ shoulder as + hollow / − arch) → reps (`findReps`) → standards, recognitio
 
 Signal helpers are in `signal.js` and chart basics in `chartkit.js` (extracted from Bar Path, see below).
 
+Keeping only the analysed part (`clip.js`, shared): a saved video is cut losslessly (its samples copied into a new
+MP4, nothing decoded) from the keyframe at or before `start` to `end`; `store.js` `planTrim()` / `applyTrim()` cut,
+then replace the video and shift the data (samples' `t`, `start`, `end`) by the cut's offset. Offered on a saved
+set's results (when it frees 5% or more) and for any ticked sets in the gallery.
+
+Text: everything the app shows comes from `locales/en.js` through `tr()` / `num()` (`i18n.js`, shared); static HTML
+through `data-i18n*` and `applyDom()` at startup. Another language = `locales/<lang>.js` with the same keys, listed in
+`LANGS` (i18n.js, in both apps) and in `SHELL_FILES`; Settings shows a language picker once there are two.
+
 ### Decisions that matter (each was a real failure)
 - **The hidden side**: side-on, MediaPipe guesses the far wrist/elbow, sometimes at the hip (visibility 0.2–0.4).
   Averaging it in dragged "the bar" 30–45 cm. Side-on clips (median min-visibility of the pairs < 0.6) use the
@@ -66,6 +75,10 @@ Signal helpers are in `signal.js` and chart basics in `chartkit.js` (extracted f
   it penalised the shoulders' natural stretch under the snap's force spike and contradicted hips-before-arms.
 - **The gravity check** (angular momentum about the bar changes only by gravity's torque) reads 63–93% on simulated
   swings with tracking noise but 10–50% on handheld 30 fps clips: a measurement, a warning only under 10%.
+- **Cutting a video** starts on a keyframe, and every kept frame keeps its time: new = old − offset. Players read
+  fragmented MP4 (the in-app camera's) without its edit lists (FFmpeg's demuxer, which Chrome uses), so clip.js
+  ignores them there. **Charts scrub only with a sideways drag or a tap** (`touch-action: pan-y` + `scrub()`): with
+  `none`, scrolling the results on the phone scrubbed the charts.
 - **Chin over the bar** is good to ±4 cm from one video (bar from the grip point, chin from nose and mouth):
   pass > +3 cm, no-rep < −6 cm, too close to call in between.
 
@@ -80,13 +93,13 @@ MediaPipe-like noise. Keyframes must not repeat a time (a jump in shape is an in
 
 `tools/shared-check.sh` keeps this honest. Today:
 - **Identical** (change in both or neither): `js/video.js`, `js/pose.js`, `js/trim.js`, `js/qr.js`,
-  `js/recorder.js`, `tools/render-icons.mjs`, `test/qr.test.mjs`, `.editorconfig`, the Pages workflow.
+  `js/recorder.js`, `js/i18n.js`, `js/clip.js`, `tools/render-icons.mjs`, `test/qr.test.mjs`, `test/clip.test.mjs`,
+  `.editorconfig`, the Pages workflow.
 - **Adapted**: `js/store.js` (database name), `js/share.js` (share text), `js/gallery.js` (movements; compare
-  optional), `js/overlay.js` (bar and centre of mass instead of the plate), `sw.js` (file list; cache prefix, and
-  it deletes only its own old caches: Bar Path's deletes every other cache on the origin, which would wipe Kip
-  Lab's offline copy on croway.github.io: fix there when merging or publishing both), `manifest.webmanifest`,
+  optional), `js/overlay.js` (bar and centre of mass instead of the plate), `sw.js` (file list; cache prefix: each
+  app deletes only its own old caches, so both can live on croway.github.io), `manifest.webmanifest`,
   `tools/phone.sh` (port 8766), `tools/fetch-vendor.sh` (+ the heavy model), `css/app.css` (Bar Path's plus a Kip
-  Lab section at the end), `js/app.js`, `index.html`.
+  Lab section at the end), `js/app.js`, `index.html`, `locales/en.js` (the shared modules' keys are the same).
 - **Extracted**: `js/signal.js` (Bar Path has these at the top of `analysis.js`), `js/chartkit.js` (the top of
   `charts.js` and `compare.js`).
 - Gallery cards keep Bar Path's schema (`lift` holds the movement), so one gallery can hold both.
@@ -94,7 +107,11 @@ A merge: one app with two families (barbell: plate tracking + `analysis.js`; bar
 shared files once, app name/texts from one place.
 
 ## Conventions
-- Colours only via the CSS tokens in `css/app.css`; the guide diagram uses them too.
+- Colours only via the CSS tokens in `css/app.css`; the guide diagram uses them too. Text colours (`--muted`,
+  `--sN-on`, `--*-text`) are checked for 4.5:1 in both themes.
+- Visible text through `tr()` (named tr: `t` is time all over this code), numbers in text through `num()`; never
+  `tr()` at a module's top level (the language is set at startup). CSV/JSON exports stay English with "." decimals.
+- Icons from the SVG sprite at the top of `index.html` (`<use href="#i-…">`), never Unicode glyphs.
 - Text into the DOM via `textContent`, never `innerHTML` with data.
 - New app files must be added to `SHELL_FILES` in `sw.js`; bump `SHELL` when caching behaviour changes.
 - Every analysis change keeps `npm test` passing and is checked on real clips (`test/real.mjs`); clips of people

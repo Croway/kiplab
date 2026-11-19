@@ -2,6 +2,7 @@
 // would show. node test/run.mjs <x.samples.json> [--from s] [--to s] [--height cm] [--kg kg] [--move pullup|…] [--reps]
 import { readFileSync } from "node:fs";
 import { analyse, fmtMetric } from "../js/kip.js";
+import { tr } from "../js/i18n.js";
 
 const [file] = process.argv.slice(2);
 const arg = (k, d) => { const i = process.argv.indexOf("--" + k); return i >= 0 ? process.argv[i + 1] : d; };
@@ -15,6 +16,6 @@ console.log("tiles:", R.tiles.map((t) => `${t.label} ${t.value}${t.unit}`).join(
 for (const r of R.reps) {
   console.log(`  rep ${r.n} ${r.kind} ${r.valid.padEnd(6)} t=${(R.T[r.top] + from).toFixed(2)} hipsFirst ${(r.hipsFirst * 1000).toFixed(0)}ms snap${r.snapDir > 0 ? "+" : "-"} kip ${r.fromKip === null ? "-" : (r.fromKip * 100).toFixed(0)}% work ${r.workRatio === null ? "-" : (r.workRatio * 100).toFixed(0)}% rise ${(r.rise * 100).toFixed(0)}cm F ${r.peakForce.toFixed(2)} kept ${r.kept === null ? "-" : (r.kept * 100).toFixed(0)}% hang ${(r.hang * 100).toFixed(0)}% | chin ${(r.std.chinU * 100).toFixed(0)} chest ${(r.std.chest * 100).toFixed(0)} feet ${(r.std.feet * 100).toFixed(0)} sh ${(r.std.shTop * 100).toFixed(0)} lock ${r.std.lock ? (r.std.lock * 100).toFixed(0) : "-"} ${r.kipping ? "kip" : "strict"}`);
 }
-for (const c of R.checks) console.log(`  [${c.status}] ${c.basis}: ${c.title} — ${c.text}`);
+for (const c of R.checks) console.log(`  [${c.status}] ${tr(`checks.basis.${c.basis}`)}: ${c.title} — ${c.text}`);
 for (const c of R.film) console.log(`  film [${c.status}] ${c.title} — ${c.text}`);
 if (process.argv.includes("--metrics")) for (const m of R.metrics) console.log(`  ${m.group} · ${m.label}: ${fmtMetric(m)} ${m.unit} ${m.note ? `(${m.note})` : ""}`);

@@ -15,7 +15,7 @@ in Chrome, and Bar Path's sibling: same structure, much of the same code, meant 
 | Toes-to-bar | reps; toes to the bar; heels behind it before each rep; force; work per rep |
 | Bar muscle-up | reps; arms long at the bottom; lockout above the bar; from the kip; hips and pull timing; force |
 | Kip swing | swings, swing size, hollow and arch range at hips and shoulders, energy added per swing |
-| All | camera angle (measured), whether the phone moved, frame rate; energy, force and body-shape charts; the path around the bar; CSV/JSON export; a gallery of sets |
+| All | camera angle (measured), whether the phone moved, frame rate; energy, force and body-shape charts; the path around the bar; CSV/JSON export; a gallery of sets, whose videos can be cut to just the analysed part |
 
 ## The physics
 

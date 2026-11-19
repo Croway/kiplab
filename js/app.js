@@ -1,7 +1,7 @@
 /* Kip Lab: the screens and the flow. Get a video (record or pick), choose the set on the timeline, track the body
  * on every frame, analyse, show the replay and the charts. Everything runs on the device. Bar Path's app.js with
  * the plate marking taken out (the hands give the bar) and the results of js/kip.js. */
-import { analyse, fmtMetric, MOVES } from "./kip.js";
+import { analyse, fmtMetric, inWords, MOVES } from "./kip.js";
 import * as V from "./video.js";
 import * as Pose from "./pose.js";
 import * as Rec from "./recorder.js";
@@ -9,13 +9,22 @@ import * as Ov from "./overlay.js";
 import { Timeline } from "./trim.js";
 import { initShare } from "./share.js";
 import * as Store from "./store.js";
-import { Gallery } from "./gallery.js";
+import { Gallery, mb } from "./gallery.js";
 import { drawPath, pathHit, drawSeries, seriesHit, fillTip, where, GOAL } from "./kipcharts.js";
-import { rampCss } from "./chartkit.js";
+import { rampCss, scrub } from "./chartkit.js";
+import { tr, num, rich, applyDom, setLang, pickLang, LANGS } from "./i18n.js";
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const video = $("video"), overlay = $("overlay"), viewer = $("viewer");
+
+/* the language first: every text below (and the timeline's) is read from its catalog */
+let savedLang = null;
+try { savedLang = localStorage.getItem("kiplab.lang"); } catch { /* storage unavailable: the phone's language */ }
+try { await setLang(pickLang(savedLang)); } catch { await setLang("en"); } // a catalog that can't load: English
+applyDom();
+/** a number as String() writes it (72.5, 80), with the language's decimal mark */
+const plain = (v) => num(v, (String(v).split(".")[1] || "").length);
 
 const S = {
   src: null, blob: null, name: "set",
@@ -52,6 +61,7 @@ const opts = () => ({ W: S.W, slowmo: +$("slowmo").value, facing: S.facingOverri
 /* ------------------------------------------------------------------ screens */
 function setMode(m) {
   S.mode = m;
+  document.body.dataset.mode = m; // the app's header shows on the start screen only
   $("start").hidden = m !== "start";
   $("gallery").hidden = m !== "gallery";
   if (m === "gallery") stopPlayback();
@@ -80,14 +90,13 @@ async function openVideo(file, name, recorded, saved = null) {
   if (!saved) { loadSettings(); $("moveSel").value = "auto"; $("facing").value = "0"; }
   $("resSaved").textContent = "";
   $("btnDelete").hidden = true;
+  hideTrim();
   $("btnSaveVideo").hidden = !recorded;
   $("btnAnalyse").disabled = true;
-  $("markInstr").replaceChildren(
-    "Drag the handles under the video to ", Object.assign(document.createElement("b"), { textContent: "just the set" }),
-    ": from the hang before the first kip to the last rep, without jumping up or dropping off. Then Analyse.");
+  rich($("markInstr"), tr("mark.instr"));
   TL.setVideo(0, 30);
   setMode("mark");
-  $("videoInfo").textContent = "Opening the video…";
+  $("videoInfo").textContent = tr("mark.opening");
   try {
     const info = await V.load(video, S.src);
     Object.assign(S, { W: info.W, H: info.H, duration: info.duration });
@@ -118,12 +127,12 @@ function restore(d) {
   $("btnAnalyse").disabled = false;
   videoInfo();
   showResults(true);
-  $("resSaved").textContent = "From the gallery on this phone. Choose again to change the part.";
+  $("resSaved").textContent = tr("res.fromGallery");
   $("btnDelete").hidden = false;
+  updateTrim();
 }
 function videoInfo() {
-  const parts = [`${S.W}×${S.H}`, `${Math.round(S.fps)} fps`, `${S.duration.toFixed(1)} s`];
-  $("videoInfo").textContent = parts.join(" · ") + (S.fps < 50 ? ". 60 fps catches the kip's snap better." : "");
+  $("videoInfo").textContent = tr(S.fps < 50 ? "mark.infoLowFps" : "mark.info", { w: S.W, h: S.H, fps: Math.round(S.fps), dur: num(S.duration, 1) });
 }
 
 /* ------------------------------------------------------------------ scrubbing and choosing the part */
@@ -146,8 +155,8 @@ function shown(t = video.currentTime) {
 }
 function readout(t = video.currentTime) {
   $("timeRead").textContent = S.mode === "mark" && !preview
-    ? `${S.start.toFixed(2)}–${endT().toFixed(2)} s · ${(endT() - S.start).toFixed(2)} s`
-    : `${t.toFixed(2)} s`;
+    ? tr("mark.range", { from: num(S.start, 2), to: num(endT(), 2), dur: num(endT() - S.start, 2) })
+    : tr("work.time", { t: num(t, 2) });
 }
 const TL = new Timeline($("timeline"), {
   onInput(what, t) {
@@ -169,7 +178,7 @@ let preview = false;
 async function startPreview() {
   stopPlayback();
   preview = true;
-  $("btnPreview").textContent = "Stop";
+  $("btnPreview").textContent = tr("common.stop");
   await seekTo(S.start);
   if (!preview) return;
   video.playbackRate = 1;
@@ -189,7 +198,7 @@ function stopPreview() {
   if (!preview) return;
   preview = false;
   video.pause();
-  $("btnPreview").textContent = "Play";
+  $("btnPreview").textContent = tr("common.play");
   TL.setHead(null);
   seekTo(S.start);
 }
@@ -205,10 +214,10 @@ async function run() {
   const kind = $("poseModel").value;
   let P;
   S.poseNote = "";
-  progress(0, "Loading body tracking…");
+  progress(0, tr("run.loading"));
   try { P = await Pose.load(kind); } catch (e) {
     setMode("mark");
-    $("markInstr").textContent = `Body tracking couldn't load (${e?.message || e}). It needs the internet the first time.`;
+    $("markInstr").textContent = tr("run.loadFailed", { err: e?.message || e });
     return;
   }
   if (ac.signal.aborted) return setMode("mark");
@@ -227,16 +236,16 @@ async function run() {
         samples.push({ t, pose });
         Ov.draw(overlay, { W: S.W, H: S.H, pose });
       },
-      onProgress: (p) => progress(p, `Tracking the body… ${samples.length} frames`),
+      onProgress: (p) => progress(p, tr("run.tracking", { n: samples.length })),
     });
   } catch (e) {
     setMode("mark");
-    if (e?.name !== "AbortError") $("markInstr").textContent = `Tracking stopped: ${e?.message || e}`;
+    if (e?.name !== "AbortError") $("markInstr").textContent = tr("run.stopped", { err: e?.message || e });
     shown();
     return;
   }
   S.samples = samples;
-  S.runStats = { frames: samples.length, seconds: (performance.now() - began) / 1000, pose: `${P.kind} on ${P.delegate}` };
+  S.runStats = { frames: samples.length, seconds: (performance.now() - began) / 1000, pose: tr("run.pose", { kind: P.kind, delegate: P.delegate }) };
   showResults(true);
   if (S.mode === "results") saveSet(true);
 }
@@ -245,9 +254,27 @@ $("btnCancel").addEventListener("click", () => S.abort?.abort());
 document.addEventListener("visibilitychange", () => { if (!document.hidden && S.mode === "running" && video.paused) video.play().catch(() => {}); });
 
 /* ------------------------------------------------------------------ results */
-const STATUS = { good: ["✓", "Good"], warning: ["!", "Watch"], serious: ["!!", "Work on"] };
+/** a check's status in words: good, warning, serious */
+const STATUS = (s) => tr(`status.${s}`);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
-const VALID = { pass: ["✓", "ok"], unsure: ["?", "maybe"], no: ["✗", "no"] };
+/** a rep against the standard: icon, class (the words for screen readers: tr(`valid.${r.valid}`)) */
+const VALID = { pass: ["check", "ok"], unsure: ["maybe", "maybe"], no: ["x", "no"] };
+const SVG = "http://www.w3.org/2000/svg";
+/** an icon from the sprite in index.html (#i-<name>), hidden from screen readers: the text next to it says it */
+function icon(name, cls = "") {
+  const s = document.createElementNS(SVG, "svg"), u = document.createElementNS(SVG, "use");
+  s.setAttribute("class", `i ${cls}`.trim());
+  s.setAttribute("aria-hidden", "true");
+  u.setAttribute("href", `#i-${name}`);
+  s.append(u);
+  return s;
+}
+/** a note above the results: a warning tint and icon */
+const note = (text) => { const li = el("li"); li.append(icon("warning", "ico warning"), el("span", null, text)); return li; };
+/** a value and its unit: no space before ° and % */
+const withUnit = (v, unit) => (!unit ? v : /^[°%]/.test(unit) ? `${v}${unit}` : `${v} ${unit}`);
+/** check groups, in this order, by what a check rests on (ids; the headings: tr(`checks.basis.${id}`)) */
+const BASIS = ["standard", "physics", "coaching"];
 
 function showResults(fresh = false) {
   const R = analyse(S.samples, opts());
@@ -264,13 +291,13 @@ function showResults(fresh = false) {
   $("resTitle").textContent = R.title;
   const st = S.runStats, v = R.view;
   $("resSub").textContent = [
-    `${R.moveFrom === "you" ? "chosen by you" : "recognised from the body"}`,
-    `faces ${R.facing > 0 ? "right" : "left"}`,
-    `camera ~${Math.round(v.alpha)}° from side-on`,
-    R.kg ? `${R.kg} kg` : null,
-    R.slow > 1 ? `slowed ${R.slow}×` : null,
-    st ? `${st.frames} frames in ${st.seconds.toFixed(0)} s, ${st.pose}` : null,
+    tr(R.moveFrom === "you" ? "res.sub.you" : "res.sub.body"),
+    tr(R.facing > 0 ? "res.sub.facesRight" : "res.sub.facesLeft"),
+    tr("res.sub.camera", { deg: Math.round(v.alpha) }),
+    R.kg ? tr("res.sub.kg", { kg: plain(R.kg) }) : null,
+    R.slow > 1 ? tr("res.sub.slowed", { k: R.slow }) : null,
   ].filter(Boolean).join(" · ");
+  $("runInfo").textContent = st ? tr("res.runInfo", { frames: st.frames, s: num(st.seconds, 0), pose: st.pose }) : "";
 
   const tiles = $("tiles");
   tiles.replaceChildren();
@@ -282,7 +309,7 @@ function showResults(fresh = false) {
     d.append(val, el("div", "note", t.note));
     tiles.append(d);
   }
-  $("notes").replaceChildren(...[...R.notes, S.poseNote].filter(Boolean).map((n) => el("li", null, n)));
+  $("notes").replaceChildren(...[...R.notes, S.poseNote].filter(Boolean).map(note));
 
   // reps
   $("repsCard").hidden = !R.reps.length;
@@ -290,38 +317,61 @@ function showResults(fresh = false) {
     const t = $("repsTable"), kip = R.kipping;
     t.replaceChildren();
     const head = el("tr");
-    const cols = ["Rep", "Std", ...(kip ? ["Kip", "Hips→arms"] : []), "Peak", "Work", "Rise", "Time"];
-    for (const h of cols) head.append(el("th", null, h));
+    // name and unit in the header; what each means in the list under the table
+    const cols = [[tr("reps.col.rep")], [tr("reps.col.std")], ...(kip ? [[tr("reps.col.kip"), "%"], [tr("reps.col.hipsArms"), "ms"]] : []), [tr("reps.col.peak"), tr("unit.bw")], [tr("reps.col.work"), "%"], [tr("reps.col.rise"), "cm"], [tr("reps.col.time"), "s"]];
+    for (const [h, u] of cols) {
+      const th = el("th", null, h);
+      if (u) th.append(el("span", "u", u));
+      head.append(th);
+    }
     t.append(head);
     for (const r of R.reps) {
-      const tr = el("tr");
-      tr.dataset.rep = r.n;
+      const row = el("tr");
+      row.dataset.rep = r.n;
       const [mark, cls] = VALID[r.valid];
-      const std = el("td", cls, mark);
+      const std = el("td", cls);
+      std.append(icon(mark), el("span", "vh", tr(`valid.${r.valid}`)));
       std.title = r.checks.map((c) => c.text).join(", ");
-      tr.append(el("td", null, String(r.n) + (R.best === r.n ? " ★" : "")), std);
+      const go = el("button", "go", String(r.n)); // the row is tappable; the button gives it a keyboard way in
+      go.type = "button";
+      go.setAttribute("aria-label", tr(R.best === r.n ? "reps.jumpBest" : "reps.jump", { n: r.n }));
+      if (R.best === r.n) go.append(icon("star", "best"));
+      const first = el("td");
+      first.append(go);
+      row.append(first, std);
       const cells = [...(kip ? [r.fromKip === null ? "–" : `${Math.round(100 * r.fromKip)}%`, `${Math.round(r.hipsFirst * 1000)}`] : []),
-        `${r.peakForce.toFixed(1)}×`, r.workRatio === null ? "–" : `${Math.round(100 * r.workRatio)}%`, `${Math.round(r.rise * 100)}`, r.cycle === null ? "–" : r.cycle.toFixed(2)];
-      for (const c of cells) tr.append(el("td", null, c));
-      tr.addEventListener("click", () => setCursor(r.top, true));
-      t.append(tr);
+        `${num(r.peakForce, 1)}×`, r.workRatio === null ? "–" : `${Math.round(100 * r.workRatio)}%`, `${Math.round(r.rise * 100)}`, r.cycle === null ? "–" : num(r.cycle, 2)];
+      for (const c of cells) row.append(el("td", null, c));
+      row.addEventListener("click", () => setCursor(r.top, true));
+      t.append(row);
     }
-    $("repsNote").textContent = [R.best ? "★ cost the least work." : null,
-      kip ? "Kip: the rep's energy already there when the arms start to pull. Hips→arms: ms from the hip snap to the pull." : null,
-      "Peak: force through the bar, × bodyweight. Work: the muscles' work over the rep, against lifting the body that high. Rise: cm the centre of mass went up. Time: s, top to top."].filter(Boolean).join(" ");
+    const defs = [
+      ...(R.best ? [[icon("star", "best"), tr("reps.def.best")]] : []),
+      ...(kip ? [[tr("reps.col.kip"), tr("reps.def.kip")], [tr("reps.col.hipsArms"), tr("reps.def.hipsArms")]] : []),
+      [tr("reps.col.peak"), tr("reps.def.peak")], [tr("reps.col.work"), tr("reps.def.work")],
+      [tr("reps.col.rise"), tr("reps.def.rise")], [tr("reps.col.time"), tr("reps.def.time")],
+    ];
+    $("repsDefs").replaceChildren(...defs.flatMap(([k, v]) => { const dt = el("dt"); dt.append(k); return [dt, el("dd", null, v)]; }));
   }
 
   // checks, filming
   const fill = (ul, list) => {
     ul.replaceChildren();
-    for (const c of list) {
+    // checks with a basis come grouped under it (standard, physics, coaching), each group in the analysis's order
+    const order = (c) => (c.basis ? BASIS.indexOf(c.basis) : -1);
+    let group = null;
+    for (const c of [...list].sort((a, b) => order(a) - order(b))) {
+      if (c.basis && c.basis !== group) {
+        group = c.basis;
+        const g = el("li", "grp");
+        g.append(el("h4", null, tr(`checks.basis.${group}`)));
+        ul.append(g);
+      }
       const li = el("li");
-      const [icon, word] = STATUS[c.status];
-      const ico = el("span", `ico ${c.status}`, icon);
-      ico.setAttribute("aria-hidden", "true");
+      const word = STATUS(c.status);
+      const ico = icon(c.status, `ico ${c.status}`);
       const body = el("div");
       const ttl = el("div", "ttl");
-      if (c.basis) ttl.append(el("span", "basis", c.basis));
       ttl.append(document.createTextNode(c.title), el("span", null, word));
       body.append(ttl, el("div", "txt", c.text));
       li.append(ico, body);
@@ -338,17 +388,17 @@ function showResults(fresh = false) {
   for (const m of R.metrics) {
     if (m.group !== group) {
       group = m.group;
-      const tr = el("tr"), th = el("th", null, group);
+      const row = el("tr"), th = el("th", null, group);
       th.colSpan = 2;
-      tr.append(th);
-      table.append(tr);
+      row.append(th);
+      table.append(row);
     }
-    const tr = el("tr"), a = el("td", null, m.label);
-    if (m.note && m.label !== "Style" && m.label !== "Hip snap") a.append(el("span", "n", m.note));
-    tr.append(a, el("td", "v", `${fmtMetric(m)} ${m.label === "Style" || m.label === "Hip snap" ? "" : m.unit}`.trim()));
-    table.append(tr);
+    const row = el("tr"), a = el("td", null, m.label);
+    if (m.note && !inWords(m)) a.append(el("span", "n", m.note));
+    row.append(a, el("td", "v", inWords(m) ? fmtMetric(m) : withUnit(fmtMetric(m), m.unit)));
+    table.append(row);
   }
-  $("pathSub").textContent = `The centre of mass, coloured by speed, and the ${(GOAL[R.move] || GOAL.pullup)[1].toLowerCase()} (thin), around the bar. True scale. Drag across it to scrub.`;
+  $("pathSub").textContent = tr("path.subGoal", { goal: tr(`goal.${GOAL[R.move] || GOAL.pullup}`) });
 
   drawCharts();
   setCursor(S.cursor, true);
@@ -360,18 +410,18 @@ function drawCharts() {
   const R = S.R, c = S.cursor;
   S.geo = {
     energy: drawSeries($("energyChart"), R, c, { lines: [{ v: R.kg ? R.Er.map((x) => x * R.kg) : R.Er, color: "--s1", width: 2.25 }, { v: R.kg ? R.PEr.map((x) => x * R.kg) : R.PEr, color: "--s3", width: 1.75 }], unit: R.kg ? "J" : "J/kg", d: R.kg ? 0 : 1, lo: 0 }),
-    force: drawSeries($("forceChart"), R, c, { lines: [{ v: R.Fb, color: "--s2", width: 2.25 }], unit: "× bodyweight", d: 1, ref: 1, lo: 0 }),
+    force: drawSeries($("forceChart"), R, c, { lines: [{ v: R.Fb, color: "--s2", width: 2.25 }], unit: tr("unit.bodyweight"), d: 1, ref: 1, lo: 0 }),
     shape: drawSeries($("shapeChart"), R, c, { lines: [{ v: R.hip, color: "--s2", width: 2 }, { v: R.shoulder, color: "--s5", width: 2 }], unit: "°", d: 0, ref: 0 }),
   };
   S.geoPath = drawPath($("pathChart"), R, c);
   $("rampKey").style.background = rampCss(S.geoPath.stops);
-  $("rampMax").textContent = `${S.geoPath.vTop.toFixed(1)} m/s`;
-  for (const tr of $("repsTable").querySelectorAll("tr[data-rep]")) tr.classList.toggle("on", +tr.dataset.rep === R.repOf[c]);
+  $("rampMax").textContent = tr("path.speedMax", { v: num(S.geoPath.vTop, 1) });
+  for (const row of $("repsTable").querySelectorAll("tr[data-rep]")) row.classList.toggle("on", +row.dataset.rep === R.repOf[c]);
 }
 function hud(i) {
   const R = S.R;
-  const E = R.kg ? `${Math.round(R.Er[i] * R.kg)} J` : `${R.Er[i].toFixed(1)} J/kg`;
-  $("hud").textContent = `${where(R, i)} · ${R.Fb[i].toFixed(1)}× bw · ${E}`;
+  const E = R.kg ? `${Math.round(R.Er[i] * R.kg)} J` : `${num(R.Er[i], 1)} J/kg`;
+  $("hud").textContent = tr("res.hud", { where: where(R, i), f: num(R.Fb[i], 1), energy: E });
 }
 function setCursor(i, seek) {
   if (!S.R) return;
@@ -406,7 +456,6 @@ function redrawOverlay(t = video.currentTime) {
 
 function bindChart(canvas, hit) {
   const tip = canvas.parentElement.querySelector(".tip");
-  const at = (e) => { const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   const show = (i, p) => {
     if (!tip) return;
     fillTip(tip, S.R, i);
@@ -415,9 +464,7 @@ function bindChart(canvas, hit) {
     tip.style.left = `${clamp(p.x + 14 + tw > W ? p.x - 14 - tw : p.x + 14, 0, W - tw)}px`;
     tip.style.top = `${clamp(p.y - 40, 0, canvas.clientHeight - tip.offsetHeight)}px`;
   };
-  const move = (e) => { if (!S.R) return; const p = at(e), i = hit(p); setCursor(i, true); show(i, p); };
-  canvas.addEventListener("pointerdown", move);
-  canvas.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse" || e.buttons) move(e); });
+  scrub(canvas, (p) => { if (!S.R) return; const i = hit(p); setCursor(i, true); show(i, p); }, { hover: true });
   canvas.addEventListener("pointerleave", () => { if (tip) tip.hidden = true; });
   canvas.addEventListener("pointercancel", () => { if (tip) tip.hidden = true; });
   canvas.addEventListener("keydown", (e) => {
@@ -430,14 +477,14 @@ for (const id of ["energy", "force", "shape"]) bindChart($(`${id}Chart`), (p) =>
 bindChart($("pathChart"), (p) => pathHit(S.geoPath, S.R, p.x, p.y));
 
 /* replay */
-function stopPlayback() { if (S.playing) { S.playing = false; video.pause(); } $("btnPlay").textContent = "Play"; }
+function stopPlayback() { if (S.playing) { S.playing = false; video.pause(); } $("btnPlay").textContent = tr("common.play"); }
 async function play() {
   if (!S.R) return;
   const tEnd = S.R.tVideo(S.R.n - 1);
   if (video.currentTime >= tEnd - 0.02) await V.seek(video, S.R.tVideo(0));
   video.playbackRate = S.rate;
   S.playing = true;
-  $("btnPlay").textContent = "Pause";
+  $("btnPlay").textContent = tr("common.pause");
   const frame = (t) => {
     if (!S.playing) return false;
     if (t >= tEnd) { stopPlayback(); return false; }
@@ -456,7 +503,7 @@ async function play() {
   video.play().catch(() => stopPlayback());
 }
 $("btnPlay").addEventListener("click", () => (S.playing ? stopPlayback() : play()));
-video.addEventListener("pause", () => { if (S.mode === "results") { S.playing = false; $("btnPlay").textContent = "Play"; } });
+video.addEventListener("pause", () => { if (S.mode === "results") { S.playing = false; $("btnPlay").textContent = tr("common.play"); } });
 for (const b of document.querySelectorAll("#rates button")) {
   b.addEventListener("click", () => {
     S.rate = +b.dataset.rate;
@@ -548,24 +595,28 @@ async function saveSet(fresh) {
       await Store.put(card, data, isNew ? S.file : null);
       S.entryId = id;
       galleryCount();
+      updateTrim();
     } else await Store.update(id, card, { opts: data.opts });
-    $("resSaved").textContent = "Saved in the gallery, on this phone.";
+    $("resSaved").textContent = tr("res.saved");
     $("btnDelete").hidden = false;
   } catch (e) {
-    $("resSaved").textContent = `Couldn't keep it in the gallery (${e?.message || e}).`;
+    $("resSaved").textContent = tr("res.saveFailed", { err: e?.message || e });
   }
 }
 let saveTimer = 0;
 const queueSave = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => saveSet(false), 400); };
 
 const GAL = new Gallery(
-  { list: $("galList"), filters: $("galFilters"), summary: $("galSummary"), empty: $("galEmpty"), bar: $("galBar"), barText: $("galBarText"), remove: $("btnGalDelete") },
+  { list: $("galList"), filters: $("galFilters"), summary: $("galSummary"), status: $("galStatus"), empty: $("galEmpty"), bar: $("galBar"), barText: $("galBarText"), remove: $("btnGalDelete"), trim: $("btnGalTrim") },
   { open: (id) => openSaved(id) },
 );
+let howtoSet = false;
 async function galleryCount() {
   const n = await GAL.count();
   $("btnGallery").hidden = n === 0;
-  $("btnGallery").textContent = `Gallery · ${n}`;
+  $("btnGallery").textContent = tr("start.galleryCount", { n });
+  // the filming guide: open on the first visit, folded away once there are sets (Record comes first then)
+  if (!howtoSet) { howtoSet = true; $("howto").open = n === 0; }
 }
 
 /* screens you can go back from with the phone's Back: each gets a history entry */
@@ -598,12 +649,48 @@ window.addEventListener("popstate", (e) => {
 for (const id of ["btnGallery", "btnGallery2"]) $(id).addEventListener("click", () => showGallery());
 $("btnGalBack").addEventListener("click", () => history.back());
 $("btnDelete").addEventListener("click", async () => {
-  if (!S.entryId || !confirm("Delete this set from Kip Lab's gallery? A video in your phone's Gallery app isn't affected.")) return;
+  if (!S.entryId || !confirm(tr("res.confirmDelete"))) return;
   await Store.remove(S.entryId).catch(() => {});
   S.entryId = null;
   $("btnDelete").hidden = true;
-  $("resSaved").textContent = "Deleted from the gallery.";
+  hideTrim();
+  $("resSaved").textContent = tr("res.deleted");
   galleryCount();
+});
+
+/* keeping only the analysed part of the saved video (js/clip.js, store.js): offered when it frees at least 5% */
+let trimPlan = null;
+function hideTrim() { trimPlan = null; $("trimRow").hidden = true; }
+async function updateTrim() {
+  hideTrim();
+  const id = S.entryId;
+  if (!id) return;
+  try {
+    const p = await Store.planTrim(id);
+    if (!p || p.card.trimmed || S.entryId !== id || p.r.after > 0.95 * p.r.before) return;
+    trimPlan = p;
+    $("trimInfo").textContent = tr("res.trimInfo", { before: mb(p.r.before), after: mb(p.r.after) });
+    $("btnTrim").disabled = false;
+    $("trimRow").hidden = false;
+  } catch { /* not an MP4 (a WebM recording), or no video track: nothing to offer */ }
+}
+$("btnTrim").addEventListener("click", async () => {
+  const p = trimPlan;
+  if (!p || p.card.id !== S.entryId) return;
+  const ask = tr("res.confirmTrim", { before: mb(p.r.before), after: mb(p.r.after) }) + (S.blob ? `\n\n${tr("res.confirmTrimRecorded")}` : "");
+  if (!confirm(ask)) return;
+  $("btnTrim").disabled = true;
+  try {
+    await Store.applyTrim(p);
+    const got = await Store.get(p.card.id);
+    // open it again on the shorter video (its times moved with it); no new history entry
+    await openVideo(new File([got.video], got.card.name, { type: got.video.type || "video/mp4" }), got.card.name, false, got);
+    $("resSaved").textContent = tr("res.trimmed", { size: mb(p.r.after) });
+    galleryCount();
+  } catch (e) {
+    $("trimInfo").textContent = tr("res.trimFailed", { err: e?.message || e });
+    $("btnTrim").disabled = false;
+  }
 });
 
 /* ------------------------------------------------------------------ getting a video */
@@ -617,27 +704,26 @@ $("btnRecord").addEventListener("click", () => $("captureInput").click());
 $("btnCamLevel").addEventListener("click", () => openCam());
 async function openCam() {
   setMode("camera");
-  $("camInfo").textContent = "Opening the camera…";
+  $("camInfo").textContent = tr("cam.opening");
   try {
     S.cam = await Rec.openCamera($("camVideo"));
   } catch (e) {
     setMode("start");
-    $("recordHint").textContent = `Couldn't open the camera here (${e?.message || e}). Record opens the camera app instead.`;
+    $("recordHint").textContent = tr("cam.failed", { err: e?.message || e });
     return;
   }
   const cv = $("camVideo"), st = S.cam.settings;
   const fps = st.frameRate ? Math.round(st.frameRate) : null;
-  $("camInfo").textContent = `${cv.videoWidth}×${cv.videoHeight}${fps ? ` at ${fps} fps` : ""}. Hold the phone upright, about 4 m away: the bar near the top mark, the feet at the back of the swing above the bottom one.` +
-    (fps && fps < 50 ? " The browser gives 30 fps here; for 60, use Record (the camera app)." : "");
+  $("camInfo").textContent = [tr(fps ? "cam.infoFps" : "cam.info", { w: cv.videoWidth, h: cv.videoHeight, fps }), fps && fps < 50 ? tr("cam.lowFps") : null].filter(Boolean).join(" ");
   let seen = false;
   S.stopLevel = Rec.watchLevel(({ roll, pitch }) => {
     seen = true;
     const ok = Math.abs(roll) < 1.5 && Math.abs(pitch) < 6;
     $("level").dataset.ok = ok ? "1" : "0";
     $("level").querySelector(".bubble").style.transform = `rotate(${(-roll).toFixed(1)}deg)`;
-    $("levelRead").textContent = ok ? "Level ✓" : `Tilt ${roll > 0 ? "+" : "−"}${Math.abs(roll).toFixed(1)}° · ${pitch > 0 ? "up" : "down"} ${Math.abs(pitch).toFixed(0)}°`;
+    $("levelRead").textContent = ok ? tr("cam.level") : tr(pitch > 0 ? "cam.tiltUp" : "cam.tiltDown", { roll: `${roll > 0 ? "+" : "−"}${num(Math.abs(roll), 1)}`, pitch: num(Math.abs(pitch), 0) });
   });
-  setTimeout(() => { if (!seen) $("levelRead").textContent = "Level: no motion sensor"; }, 1500);
+  setTimeout(() => { if (!seen) $("levelRead").textContent = tr("cam.noSensor"); }, 1500);
 }
 function closeCam() {
   S.stopLevel?.(); S.stopLevel = null;
@@ -646,16 +732,16 @@ function closeCam() {
   clearInterval(S.recTimer);
   $("recBadge").hidden = true;
   const b = $("btnRecToggle");
-  b.dataset.on = "0"; b.textContent = "Start recording";
+  b.dataset.on = "0"; b.textContent = tr("cam.start");
 }
 $("btnRecToggle").addEventListener("click", async () => {
   const b = $("btnRecToggle");
   if (!S.recorder) {
     S.recorder = Rec.startRecording(S.cam.stream);
-    b.dataset.on = "1"; b.textContent = "Stop";
+    b.dataset.on = "1"; b.textContent = tr("common.stop");
     const t0 = performance.now();
     $("recBadge").hidden = false;
-    S.recTimer = setInterval(() => { $("recTime").textContent = ((performance.now() - t0) / 1000).toFixed(1); }, 100);
+    S.recTimer = setInterval(() => { $("recTime").textContent = num((performance.now() - t0) / 1000, 1); }, 100);
   } else {
     b.disabled = true;
     const blob = await S.recorder.stop();
@@ -669,7 +755,19 @@ $("btnCamClose").addEventListener("click", () => { closeCam(); setMode("start");
 /* ------------------------------------------------------------------ settings changes */
 $("slowmo").addEventListener("change", () => { saveSettings(); if (S.mode === "results") showResults(); });
 $("facing").addEventListener("change", () => { S.facingOverride = null; if (S.mode === "results") showResults(); });
-$("poseModel").addEventListener("change", () => { saveSettings(); if (S.mode === "results") $("notes").append(el("li", null, "Body tracking changes apply the next time you analyse (Choose again → Analyse).")); });
+$("poseModel").addEventListener("change", () => { saveSettings(); if (S.mode === "results") $("notes").append(note(tr("res.poseLater"))); });
+
+/* the language: a choice only once there's more than one catalog; the page reloads in it */
+{
+  const sel = $("langSel"), langs = Object.entries(LANGS);
+  sel.replaceChildren(...langs.map(([k, name]) => Object.assign(document.createElement("option"), { value: k, textContent: name })));
+  sel.value = document.documentElement.lang;
+  sel.closest("label").hidden = langs.length < 2;
+  sel.addEventListener("change", () => {
+    try { localStorage.setItem("kiplab.lang", sel.value); } catch { /* not kept: the phone's language next time */ }
+    location.reload();
+  });
+}
 
 /* ------------------------------------------------------------------ redraw on resize / theme */
 let rz = 0;
@@ -714,7 +812,7 @@ async function takeShared() {
 }
 
 /* for tests: results from given samples, without tracking (the video must be open) */
-S.useSamples = (samples) => { S.samples = samples; S.runStats = { frames: samples.length, seconds: 0, pose: "given" }; showResults(true); if (S.mode === "results") saveSet(true); };
+S.useSamples = (samples) => { S.samples = samples; S.runStats = { frames: samples.length, seconds: 0, pose: tr("run.given") }; showResults(true); if (S.mode === "results") saveSet(true); };
 
 loadSettings();
 $("btnCamLevel").hidden = !Rec.canRecordInApp();

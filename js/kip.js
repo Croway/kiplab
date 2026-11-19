@@ -18,9 +18,22 @@
  * moves, the bar's place (and the scale) are followed frame by frame. */
 import { bodies, SEGMENTS, centreOfMass, facingOf, viewAngle, bodyScale, RIGID, camera, toPlane } from "./body.js";
 import { median, quantile, resample, filtfilt, deriv, argmax, argmin, mean, clamp, angle, fmtSigned } from "./signal.js";
+import { tr, num } from "./i18n.js";
 
-export const MOVES = { pullup: "Pull-up", c2b: "Chest-to-bar", t2b: "Toes-to-bar", bmu: "Bar muscle-up", swing: "Kip swing" };
-export const STAGES = { swing: { name: "Swing", slot: 1 }, drive: { name: "Drive", slot: 2 }, top: { name: "Top", slot: 3 }, down: { name: "Down", slot: 4 } };
+/** the movements: key → name, in the current language (read when shown: the language is set after import) */
+export const MOVES = {
+  get pullup() { return tr("move.pullup"); },
+  get c2b() { return tr("move.c2b"); },
+  get t2b() { return tr("move.t2b"); },
+  get bmu() { return tr("move.bmu"); },
+  get swing() { return tr("move.swing"); },
+};
+export const STAGES = {
+  swing: { get name() { return tr("stage.swing"); }, slot: 1 },
+  drive: { get name() { return tr("stage.drive"); }, slot: 2 },
+  top: { get name() { return tr("stage.top"); }, slot: 3 },
+  down: { get name() { return tr("stage.down"); }, slot: 4 },
+};
 const G = 9.81;
 const NAMES = ["sh", "el", "wr", "hip", "kn", "an", "heel", "toe", "ear", "nose", "mouth", "chin", "grip"];
 const rad = (d) => (d * Math.PI) / 180, deg = (r) => (r * 180) / Math.PI;
@@ -37,7 +50,7 @@ export function analyse(samples, opts = {}) {
   const slow = opts.slowmo > 0 ? opts.slowmo : 1;
   const heightM = (opts.heightCm > 100 && opts.heightCm < 250 ? opts.heightCm : 175) / 100;
   const posed = samples.filter((s) => s.pose);
-  if (posed.length < 20 || posed.length < 0.5 * samples.length) return { error: "The athlete wasn't found on most frames. Film the whole body, in good light, with nobody passing in front." };
+  if (posed.length < 20 || posed.length < 0.5 * samples.length) return { error: tr("kip.noAthlete") };
   const tv0 = samples[0].t, real = (tv) => (tv - tv0) / slow;
   const dts = [];
   for (let i = 1; i < posed.length; i++) { const d = real(posed[i].t) - real(posed[i - 1].t); if (d > 1e-5) dts.push(d); }
@@ -47,7 +60,7 @@ export function analyse(samples, opts = {}) {
 
   // the part chosen on the timeline is the set: the hands overhead give the bar
   const on = fr, onHang = fr.filter((f) => onBarNow(f.B));
-  if (onHang.length < Math.max(5, 0.5 * fr.length)) return { error: "The hands are below the hips on most of this part. Choose the part where the athlete is on the bar." };
+  if (onHang.length < Math.max(5, 0.5 * fr.length)) return { error: tr("kip.notOnBar") };
   const frames = on.map((f) => f.P);
 
   // which way, the camera's angle, the scale
@@ -308,14 +321,14 @@ function kindOf(R, s) {
 function judge(kind, s, r) {
   const v = (ok, near, txt) => ({ result: ok ? "pass" : near ? "unsure" : "no", text: txt });
   const out = [];
-  if (kind !== "t2b" && kind !== "swing") out.push({ id: "hang", ...v(r.hang >= 0.93, r.hang >= 0.88, `arms ${r.hang >= 0.93 ? "long" : "short"} before it (${Math.round(100 * r.hang)}% of the full hang)`) });
-  if (kind === "pullup") out.push({ id: "chin", ...v(s.chinU > 0.03, s.chinU > -0.06, `chin ${fmtSigned(s.chinU * 100)} cm vs the bar`) });
-  if (kind === "c2b") out.push({ id: "chest", ...v(s.chest <= 0.05, s.chest <= 0.09, `chest ${Math.round(s.chest * 100)} cm from the bar at its closest`) });
+  if (kind !== "t2b" && kind !== "swing") out.push({ id: "hang", ...v(r.hang >= 0.93, r.hang >= 0.88, tr(r.hang >= 0.93 ? "std.hangLong" : "std.hangShort", { pct: Math.round(100 * r.hang) })) });
+  if (kind === "pullup") out.push({ id: "chin", ...v(s.chinU > 0.03, s.chinU > -0.06, tr("std.chin", { cm: fmtSigned(s.chinU * 100) })) });
+  if (kind === "c2b") out.push({ id: "chest", ...v(s.chest <= 0.05, s.chest <= 0.09, tr("std.chest", { cm: Math.round(s.chest * 100) })) });
   if (kind === "t2b") {
-    out.push({ id: "feet", ...v(s.feet <= 0.12, s.feet <= 0.22, `toes ${Math.round(s.feet * 100)} cm from the bar at their closest`) });
-    out.push({ id: "heels", ...v(s.heelsBack < -0.03, s.heelsBack < 0.03, `heels ${s.heelsBack < 0 ? "behind" : "in front of"} the bar before it`) });
+    out.push({ id: "feet", ...v(s.feet <= 0.12, s.feet <= 0.22, tr("std.toes", { cm: Math.round(s.feet * 100) })) });
+    out.push({ id: "heels", ...v(s.heelsBack < -0.03, s.heelsBack < 0.03, tr(s.heelsBack < 0 ? "std.heelsBehind" : "std.heelsFront")) });
   }
-  if (kind === "bmu") out.push({ id: "lock", ...v(s.lock >= 0.88, s.lock >= 0.82, `arms ${s.lock >= 0.88 ? "locked out" : "bent"} above the bar (${Math.round(100 * s.lock)}% of their length)`) });
+  if (kind === "bmu") out.push({ id: "lock", ...v(s.lock >= 0.88, s.lock >= 0.82, tr(s.lock >= 0.88 ? "std.lockedOut" : "std.lockBent", { pct: Math.round(100 * s.lock) })) });
   return out;
 }
 
@@ -323,8 +336,7 @@ function report(R, opts) {
   const { reps, fs } = R;
   const H = R.heightM;
   const kgW = R.kg; // bodyweight: watts and joules; otherwise per kg
-  const fmtE = (j) => (kgW ? `${Math.round(j * kgW)} J` : `${j.toFixed(1)} J/kg`);
-  const fmtP = (w) => (kgW ? `${Math.round(w * kgW)} W` : `${w.toFixed(1)} W/kg`);
+  const fmtE = (j) => (kgW ? `${Math.round(j * kgW)} J` : `${num(j, 1)} J/kg`);
   for (const r of reps) { r.std = standardsOf(R, r); r.kind = kindOf(R, r.std); }
   const counts = {};
   for (const r of reps) counts[r.kind] = (counts[r.kind] || 0) + 1;
@@ -336,10 +348,14 @@ function report(R, opts) {
   const kipping = reps.length ? reps.filter((r) => r.kipping).length >= reps.length / 2 : true;
   R.kipping = kipping;
 
-  const metrics = [], put = (group, label, value, unit, note) => metrics.push({ group, label, value, unit, note });
+  // a measurement: its group and label by key (metric.group.<g>, metric.<k>.label), the note already in words
+  const metrics = [], put = (g, k, value, unit, note) => metrics.push({ group: tr(`metric.group.${g}`), label: tr(`metric.${k}.label`), value, unit, note });
+  const tile = (k, value, unit, note = tr(`tile.${k}.note`)) => tiles.push({ label: tr(`tile.${k}.label`), value, unit, note });
+  const check = (status, basis, k, vars, text = tr(`check.${k}.text`, vars)) => checks.push({ status, basis, title: tr(`check.${k}.title`, vars), text });
   const tiles = [], checks = [], notes = [], film = [];
   const valid = reps.filter((r) => r.valid === "pass").length, unsure = reps.filter((r) => r.valid === "unsure").length;
   const pct = (x) => `${Math.round(100 * x)}%`;
+  const bw = tr("unit.bw");
 
   // the swing alone
   const sw = R.swingDeg, ext = peaks(Float64Array.from(sw, Math.abs), 4, Math.round(0.4 * fs));
@@ -350,24 +366,23 @@ function report(R, opts) {
     const ePer = [];
     for (let k = 1; k < ext.length; k++) ePer.push(R.Er[ext[k]] - R.Er[ext[k - 1]]);
     const hs = quantile(R.hip, 0.97) - quantile(R.hip, 0.03), shs = quantile(R.shoulder, 0.97) - quantile(R.shoulder, 0.03);
-    tiles.push({ label: "Swings", value: String(Math.floor(ext.length / 2)), unit: "", note: "front and back = one" });
-    tiles.push({ label: "Swing size", value: amp.toFixed(0), unit: "°", note: "centre of mass, from below the bar" });
-    tiles.push({ label: "Hip range", value: hs.toFixed(0), unit: "°", note: "hollow to arch" });
-    tiles.push({ label: "Shoulder range", value: shs.toFixed(0), unit: "°", note: "hollow to arch" });
-    put("Swing", "Largest swing", amp, "°", "the centre of mass's angle from straight below the bar");
-    put("Swing", "Height gained at the ends", Math.max(0, quantile(R.comU, 0.98) - R.uRest) * 100, "cm", "centre of mass, above the still hang");
-    if (ePer.length) put("Swing", "Energy added per half swing", median(ePer) * (kgW || 1), kgW ? "J" : "J/kg", "median");
-    put("Body shape", "Hip: most hollow", quantile(R.hip, 0.98), "°", "+ flexed (hollow), − extended (arch)");
-    put("Body shape", "Hip: most arched", quantile(R.hip, 0.02), "°");
-    put("Body shape", "Shoulders: most hollow", quantile(R.shoulder, 0.98), "°", "+ arms ahead of the body line");
-    put("Body shape", "Shoulders: most arched", quantile(R.shoulder, 0.02), "°");
-    if (hs < 25) checks.push({ status: "warning", basis: "Coaching", title: "Small hollow and arch", text: `The hips moved ${Math.round(hs)}° between hollow and arch. A kip comes from a big, active hollow–arch: press the bar down in the hollow, chest through in the arch.` });
-    else checks.push({ status: "good", basis: "Coaching", title: "Hollow and arch", text: `${Math.round(hs)}° at the hips, ${Math.round(shs)}° at the shoulders between hollow and arch.` });
+    tile("swings", String(Math.floor(ext.length / 2)), "");
+    tile("swingSize", num(amp, 0), "°");
+    tile("hipRange", num(hs, 0), "°");
+    tile("shoulderRange", num(shs, 0), "°");
+    put("swing", "largestSwing", amp, "°", tr("metric.largestSwing.note"));
+    put("swing", "heightGained", Math.max(0, quantile(R.comU, 0.98) - R.uRest) * 100, "cm", tr("metric.heightGained.note"));
+    if (ePer.length) put("swing", "halfSwing", median(ePer) * (kgW || 1), kgW ? "J" : "J/kg", tr("metric.halfSwing.note"));
+    put("shape", "hipHollow", quantile(R.hip, 0.98), "°", tr("metric.hipHollow.note"));
+    put("shape", "hipArch", quantile(R.hip, 0.02), "°");
+    put("shape", "shHollow", quantile(R.shoulder, 0.98), "°", tr("metric.shHollow.note"));
+    put("shape", "shArch", quantile(R.shoulder, 0.02), "°");
+    if (hs < 25) check("warning", "coaching", "smallHollow", { deg: Math.round(hs) });
+    else check("good", "coaching", "hollowArch", { hip: Math.round(hs), sh: Math.round(shs) });
     if (ePer.length >= 2) {
       const gain = median(ePer);
-      checks.push(gain > 0.05
-        ? { status: "good", basis: "Physics", title: "Each swing adds energy", text: `About ${fmtE(gain)} per half swing: the shape changes are timed with the swing.` }
-        : { status: "warning", basis: "Physics", title: "The swing isn't growing", text: "Energy stays flat from one swing to the next. Snap into the hollow as you pass under the bar, and open into the arch at the back: that's when it pumps." });
+      if (gain > 0.05) check("good", "physics", "swingGrows", { energy: fmtE(gain) });
+      else check("warning", "physics", "swingFlat");
     }
   } else {
     const rel = move === "t2b" ? "toes" : move === "bmu" ? "shoulders" : move === "c2b" ? "chest" : "chin";
@@ -378,106 +393,117 @@ function report(R, opts) {
     const ranked = reps.filter((r) => r.workRatio !== null && r.valid !== "no");
     const best = ranked.length ? ranked.reduce((a, b) => (b.workRatio < a.workRatio ? b : a)) : null;
     R.best = best?.n ?? null;
-    tiles.push({ label: "Reps", value: `${valid}`, unit: `/ ${reps.length}`, note: unsure ? `${unsure} too close to call` : "meet the standard" });
-    if (kipping && fk.length) tiles.push({ label: "From the kip", value: String(Math.round(100 * median(fk))), unit: "%", note: "of each rep's energy, before the arms pull" });
-    if (kipping && move !== "t2b") tiles.push({ label: "Hips before arms", value: (median(hf) * 1000).toFixed(0), unit: "ms", note: median(hf) >= 0 ? "hip snap, then the pull" : "arms bend first" });
-    tiles.push({ label: "Peak bar force", value: Math.max(...pf).toFixed(1), unit: "× bw", note: `median rep ${median(pf).toFixed(1)}×` });
-    if (!kipping || move === "t2b") tiles.push({ label: "Work per rep", value: wr.length ? String(Math.round(100 * median(wr))) : "–", unit: "%", note: "of lifting the body that high" });
+    tile("reps", `${valid}`, `/ ${reps.length}`, unsure ? tr("tile.reps.noteUnsure", { n: unsure }) : tr("tile.reps.note", { n: valid }));
+    if (kipping && fk.length) tile("fromKip", String(Math.round(100 * median(fk))), "%");
+    if (kipping && move !== "t2b") tile("hipsArms", num(median(hf) * 1000, 0), "ms", median(hf) >= 0 ? tr("tile.hipsArms.note") : tr("tile.hipsArms.noteArms"));
+    tile("peakForce", num(Math.max(...pf), 1), bw, tr("tile.peakForce.note", { f: num(median(pf), 1) }));
+    if (!kipping || move === "t2b") tile("work", wr.length ? String(Math.round(100 * median(wr))) : "–", "%");
 
-    put("Set", "Reps", reps.length, "", `${valid} meet the standard${unsure ? `, ${unsure} too close to call` : ""}`);
-    if (reps.length > 1) put("Set", "Time per rep", median(reps.slice(1).map((r) => r.cycle)), "s", "median, top to top");
-    put("Set", "Style", kipping ? 1 : 0, "", kipping ? "kipping" : "strict");
-    put("Energy", "Centre of mass rise", median(reps.map((r) => r.rise)) * 100, "cm", "median, above the still hang");
-    put("Energy", "Energy at the top", median(reps.map((r) => r.eTop)) * (kgW || 1), kgW ? "J" : "J/kg", "median, above the still hang");
-    if (fk.length) put("Energy", "From the kip", median(fk) * 100, "%", "median: the share of the rep's energy already there when the elbows start to bend");
-    if (wr.length) put("Energy", "Work per rep", median(wr) * 100, "%", "median: the muscles' positive work over the rep, against lifting the body that high (under 100%: the swing paid for some)");
-    if (kept.length) put("Energy", "Energy kept between reps", median(kept) * 100, "%", "median: carried from one rep's top into the next");
-    put("Force", "Peak bar force", Math.max(...pf), "× bw", "approx. (smoothing softens short spikes)");
-    put("Force", "Peak bar force, median rep", median(pf), "× bw");
-    put("Power", "Peak muscle power", Math.max(...reps.map((r) => r.peakPower)) * (kgW || 1), kgW ? "W" : "W/kg", kgW ? `${kgW} kg` : "enter bodyweight for watts");
-    put("Power", "Mean power, drive", median(reps.map((r) => r.meanPower)) * (kgW || 1), kgW ? "W" : "W/kg", "median rep, bottom to top");
+    put("set", "reps", reps.length, "", unsure ? tr("metric.reps.noteUnsure", { n: valid, unsure }) : tr("metric.reps.note", { n: valid }));
+    if (reps.length > 1) put("set", "timePerRep", median(reps.slice(1).map((r) => r.cycle)), "s", tr("metric.timePerRep.note"));
+    put("set", "style", kipping ? 1 : 0, "", tr(kipping ? "metric.style.kipping" : "metric.style.strict"));
+    put("energy", "comRise", median(reps.map((r) => r.rise)) * 100, "cm", tr("metric.comRise.note"));
+    put("energy", "energyTop", median(reps.map((r) => r.eTop)) * (kgW || 1), kgW ? "J" : "J/kg", tr("metric.energyTop.note"));
+    if (fk.length) put("energy", "fromKip", median(fk) * 100, "%", tr("metric.fromKip.note"));
+    if (wr.length) put("energy", "work", median(wr) * 100, "%", tr("metric.work.note"));
+    if (kept.length) put("energy", "kept", median(kept) * 100, "%", tr("metric.kept.note"));
+    put("force", "peakForce", Math.max(...pf), bw, tr("metric.peakForce.note"));
+    put("force", "peakForceMedian", median(pf), bw);
+    put("power", "peakPower", Math.max(...reps.map((r) => r.peakPower)) * (kgW || 1), kgW ? "W" : "W/kg", kgW ? tr("metric.peakPower.noteKg", { kg: plain(kgW) }) : tr("metric.peakPower.note"));
+    put("power", "meanPower", median(reps.map((r) => r.meanPower)) * (kgW || 1), kgW ? "W" : "W/kg", tr("metric.meanPower.note"));
     if (kipping) {
-      put("Timing", "Hips before arms", median(hf) * 1000, "ms", "+ the hip snap peaks before the elbows bend");
+      put("timing", "hipsArms", median(hf) * 1000, "ms", tr("metric.hipsArms.note"));
       const closing = reps.filter((r) => r.snapDir > 0).length >= reps.length / 2;
-      put("Timing", "Hip snap", closing ? 1 : -1, "", closing ? "closing (to the hollow)" : "opening (hips up)");
+      put("timing", "hipSnap", closing ? 1 : -1, "", tr(closing ? "metric.hipSnap.closing" : "metric.hipSnap.opening"));
     }
-    put("Standard", "Reps meeting it", valid, "", `${MOVES[move]}: ${rel}`);
+    put("standard", "meeting", valid, "", tr("metric.meeting.note", { move: MOVES[move], part: tr(`metric.meeting.${rel}`) }));
 
     // checks: standards first, then physics, then coaching; each against your own best rep where it can
     const bad = reps.filter((r) => r.valid === "no"), close = reps.filter((r) => r.valid === "unsure");
-    if (bad.length) checks.push({ status: "serious", basis: "Standard", title: `${bad.length} likely no-rep${bad.length > 1 ? "s" : ""}`, text: bad.map((r) => `rep ${r.n}: ${r.checks.filter((c) => c.result === "no").map((c) => c.text).join(", ")}`).join("; ") + "." });
-    if (close.length) checks.push({ status: "warning", basis: "Standard", title: `${close.length} too close to call`, text: close.map((r) => `rep ${r.n}: ${r.checks.filter((c) => c.result !== "pass").map((c) => c.text).join(", ")}`).join("; ") + ". From one video the body points are good to a few cm." });
-    if (!bad.length && !close.length) checks.push({ status: "good", basis: "Standard", title: `Every rep meets the ${MOVES[move].toLowerCase()} standard`, text: `${reps[0].checks.map((c) => c.text).join(", ")}${reps.length > 1 ? " (rep 1), and the rest alike" : ""}.` });
+    const items = (list, keep) => list.map((r) => tr("check.repItem", { n: r.n, what: r.checks.filter(keep).map((c) => c.text).join(", ") })).join("; ");
+    if (bad.length) check("serious", "standard", "noRep", { n: bad.length, list: items(bad, (c) => c.result === "no") });
+    if (close.length) check("warning", "standard", "close", { n: close.length, list: items(close, (c) => c.result !== "pass") });
+    if (!bad.length && !close.length) check("good", "standard", "allPass", { move: MOVES[move].toLowerCase(), what: reps[0].checks.map((c) => c.text).join(", ") }, tr(reps.length > 1 ? "check.allPass.textMany" : "check.allPass.text", { what: reps[0].checks.map((c) => c.text).join(", ") }));
     if (kipping && fk.length) {
       const m = median(fk);
-      checks.push(m >= 0.2
-        ? { status: "good", basis: "Physics", title: "The kip carries the rep", text: `${pct(m)} of each rep's energy is already there when the arms start to pull: the swing brought it, the arms finish.` }
-        : { status: "warning", basis: "Physics", title: "The arms do most of the work", text: `Only ${pct(m)} of each rep's energy comes from the kip; the arms supply the rest. A bigger hollow–arch, with the hip snap as you pass under the bar, hands more of it to the swing.` });
+      check(m >= 0.2 ? "good" : "warning", "physics", m >= 0.2 ? "kipCarries" : "armsWork", { pct: pct(m) });
     }
     if (kipping && move !== "t2b") {
       // timing to a frame or two: at 30 fps a frame is 33 ms, so only clear leads count. A muscle-up's pull rides
       // the hip pop by design: judged more gently.
       const m = median(hf), lim = move === "bmu" ? -0.15 : -0.1, early = reps.filter((r) => r.hipsFirst < lim);
-      const frame = `${Math.round(1000 / (R.fs * R.slow))} ms a frame`;
-      if (m < lim) checks.push({ status: move === "bmu" ? "warning" : "serious", basis: "Coaching", title: "Pulling before the hips", text: `The elbows start ${Math.round(-m * 1000)} ms before the hip snap peaks (median; ${frame}). Let the hips drive first, then pull: the big muscles start the rep.` });
-      else if (early.length) checks.push({ status: "warning", basis: "Coaching", title: "Some reps pull early", text: `Rep${early.length > 1 ? "s" : ""} ${early.map((r) => r.n).join(", ")}: the arms start before the hips (${frame}).` });
-      else if (m < 0.03) checks.push({ status: "good", basis: "Coaching", title: "Hips and arms together", text: `The pull starts with the hip snap (${fmtSigned(m * 1000)} ms median; ${frame}). Letting the hips lead a little more puts the big muscles first.` });
-      else checks.push({ status: "good", basis: "Coaching", title: "Hips before arms", text: `The hip snap leads the pull by ${Math.round(m * 1000)} ms (median; ${frame}).` });
+      const frame = tr("check.frame", { ms: Math.round(1000 / (R.fs * R.slow)) });
+      if (m < lim) check(move === "bmu" ? "warning" : "serious", "coaching", "pullFirst", { ms: Math.round(-m * 1000), frame });
+      else if (early.length) check("warning", "coaching", "someEarly", { n: early.length, reps: early.map((r) => r.n).join(", "), frame });
+      else if (m < 0.03) check("good", "coaching", "together", { ms: fmtSigned(m * 1000), frame });
+      else check("good", "coaching", "hipsFirst", { ms: Math.round(m * 1000), frame });
     }
     if (best && ranked.length >= 3) {
       // what the best rep did differently: timing and kip share, against the others
       const others = ranked.filter((r) => r !== best), dt = median(others.map((r) => r.hipsFirst)), fo = median(others.map((r) => r.fromKip ?? 0));
       const bits = [];
-      if (kipping && Math.abs(best.hipsFirst - dt) >= 0.05) bits.push(`its pull started ${Math.round(Math.abs(best.hipsFirst - dt) * 1000)} ms ${best.hipsFirst > dt ? "later" : "earlier"} after the hip snap`);
-      if (kipping && best.fromKip !== null && Math.abs(best.fromKip - fo) >= 0.08) bits.push(`${pct(best.fromKip)} came from the kip (others ${pct(fo)})`);
-      checks.push({ status: "good", basis: "Physics", title: `Rep ${best.n} cost the least`, text: `It took ${pct(best.workRatio)} of the work of lifting the body that high (median rep ${pct(median(wr))})${bits.length ? `: ${bits.join("; ")}` : ""}. Use it as the model for the others.` });
+      if (kipping && Math.abs(best.hipsFirst - dt) >= 0.05) bits.push(tr(best.hipsFirst > dt ? "check.best.later" : "check.best.earlier", { ms: Math.round(Math.abs(best.hipsFirst - dt) * 1000) }));
+      if (kipping && best.fromKip !== null && Math.abs(best.fromKip - fo) >= 0.08) bits.push(tr("check.best.kip", { pct: pct(best.fromKip), others: pct(fo) }));
+      const vars = { n: best.n, work: pct(best.workRatio), median: pct(median(wr)), why: bits.join("; ") };
+      check("good", "physics", "best", vars, tr(bits.length ? "check.best.textWhy" : "check.best.text", vars));
     }
     if (kept.length >= 2) {
       const first = kept[0], last = kept[kept.length - 1];
-      if (last < first - 0.2) checks.push({ status: "warning", basis: "Physics", title: "Losing the rhythm", text: `Energy carried into the next rep fell from ${pct(first)} to ${pct(last)}: later reps restart the swing instead of riding it.` });
+      if (last < first - 0.2) check("warning", "physics", "rhythm", { first: pct(first), last: pct(last) });
     }
     const hard = reps.filter((r) => r.peakForce > 2.6);
-    if (hard.length) checks.push({ status: "warning", basis: "Physics", title: "Sharp pulls", text: `Rep${hard.length > 1 ? "s" : ""} ${hard.map((r) => r.n).join(", ")} peaked above 2.6× bodyweight through the bar. A smoother kip reaches the same height with less: easier on the shoulders.` });
+    if (hard.length) check("warning", "physics", "sharp", { n: hard.length, reps: hard.map((r) => r.n).join(", "), x: num(2.6, 1) });
   }
 
   // filming: how far the numbers can be trusted
-  const a = R.view.alpha;
+  const a = R.view.alpha, aDeg = Math.round(a);
+  const how = R.view.from === "swing" ? "swing" : R.view.from === "depth" ? "depth" : "assumed";
   film.push(a <= 50
-    ? { status: "good", title: `Camera angle about ${Math.round(a)}°`, text: `${a < 15 ? "Side-on" : "Turned from side-on"} (${Math.round(R.view.band[0])}–${Math.round(R.view.band[1])}°)${R.view.from === "swing" ? ", measured from the body's swing" : R.view.from === "depth" ? ", from the tracker's depth (the body didn't turn enough to measure it)" : ", assumed"}. Forward–back distances are corrected for it.` }
+    ? { status: "good", title: tr("film.angle.title", { deg: aDeg }), text: tr("film.angle.text", { side: tr(a < 15 ? "film.angle.sideOn" : "film.angle.turned"), lo: Math.round(R.view.band[0]), hi: Math.round(R.view.band[1]), how: tr(`film.angle.${how}`) }) }
     : a <= 62
-      ? { status: "warning", title: `Camera angle ${Math.round(a)}°`, text: "Far from side-on: forward–back numbers (swing, hollow/arch) are rough. Heights, timing and the standards hold." }
-      : { status: "serious", title: `Camera angle ${Math.round(a)}°: nearly front-on`, text: "Forward–back numbers aren't reliable from here; heights, timing and reps are. Film more from the side." });
+      ? { status: "warning", title: tr("film.angleFar.title", { deg: aDeg }), text: tr("film.angleFar.text") }
+      : { status: "serious", title: tr("film.angleFront.title", { deg: aDeg }), text: tr("film.angleFront.text") });
   film.push(R.moving
-    ? { status: "warning", title: "The phone moved", text: "The bar and the scale were followed frame by frame. Lean the phone on something: the numbers get steadier." }
-    : { status: "good", title: "Phone still", text: "The bar stayed put on screen." });
+    ? { status: "warning", title: tr("film.moved.title"), text: tr("film.moved.text") }
+    : { status: "good", title: tr("film.still.title"), text: tr("film.still.text") });
   const fps = Math.round(fs * R.slow);
-  film.push(fps >= 50 ? { status: "good", title: `${fps} fps`, text: "Enough frames for the fast hip snap." } : { status: "warning", title: `${fps} fps`, text: "60 fps catches the hip snap and the peak force better (Record films at 60)." });
+  film.push({ status: fps >= 50 ? "good" : "warning", title: tr("film.fps.title", { fps }), text: tr(fps >= 50 ? "film.fps.ok" : "film.fps.low") });
   const cons = R.consistency;
   // the gravity check: validated on simulated swings (63–93% with tracking noise); on handheld 30 fps clips it reads
   // 10–50% even when the rest holds, so it's a measurement, and a warning only when it's clearly broken
-  if (cons < 0.1) film.push({ status: "warning", title: "Physics doesn't add up", text: "The swing isn't explained by gravity at all: the tracking slipped, or the phone moved a lot. Force and timing are rough." });
-  if (!opts.heightCm) notes.push("Height not entered: 175 cm assumed. Enter yours for metres and energy (it sets the scale).");
-  if (!kgW) notes.push("Enter bodyweight to see joules and watts (the rest doesn't need it).");
-  put("Filming", "Camera angle from side-on", a, "°", R.view.from === "swing" ? "from the body's swing" : R.view.from === "depth" ? "from the tracker's depth" : "assumed");
-  put("Filming", "Physics consistency", cons * 100, "%", "how much of the swing gravity alone explains (a grip that twists the bar, tracking error and a moving phone lower it)");
-  put("Filming", "Frame rate", fps, "fps");
-  put("Filming", "Analysed", R.onBar[1] - R.onBar[0], "s", "the part analysed");
+  if (cons < 0.1) film.push({ status: "warning", title: tr("film.physics.title"), text: tr("film.physics.text") });
+  if (!opts.heightCm) notes.push(tr("note.noHeight"));
+  if (!kgW) notes.push(tr("note.noKg"));
+  put("filming", "camera", a, "°", tr(`metric.camera.${how}`));
+  put("filming", "consistency", cons * 100, "%", tr("metric.consistency.note"));
+  put("filming", "frameRate", fps, "fps");
+  put("filming", "analysed", R.onBar[1] - R.onBar[0], "s", tr("metric.analysed.note"));
 
-  const plural = (k, w) => `${k} ${w}${k === 1 ? "" : "s"}`;
-  R.title = move === "swing" || !reps.length ? `Kip swing · ${plural(Math.floor(ext.length / 2), "swing")}` : `${MOVES[move]}${kipping && move !== "bmu" && move !== "t2b" ? " (kipping)" : !kipping && move !== "t2b" ? " (strict)" : ""} · ${plural(reps.length, "rep")}`;
+  // the title: the movement, then the count (the gallery splits them at " · ")
+  const swings = move === "swing" || !reps.length;
+  const name = swings ? MOVES.swing
+    : kipping && move !== "bmu" && move !== "t2b" ? tr("title.kipping", { move: MOVES[move] })
+      : !kipping && move !== "t2b" ? tr("title.strict", { move: MOVES[move] }) : MOVES[move];
+  R.title = `${name} · ${swings ? tr("count.swings", { n: Math.floor(ext.length / 2) }) : tr("count.reps", { n: reps.length })}`;
   R.tiles = tiles; R.checks = checks; R.film = film; R.notes = notes; R.metrics = metrics;
   // stages for the timing bar: per rep, drive (bottom → top) and down (top → next bottom)
   const stages = [];
   for (const r of reps) {
-    if (r.top > r.bottom) stages.push({ id: "drive", rep: r.n, name: "Drive", slot: 2, i0: r.bottom, i1: r.top, dur: (r.top - r.bottom) / fs });
-    if (r.end > r.top) stages.push({ id: "down", rep: r.n, name: "Down", slot: 4, i0: r.top, i1: r.end, dur: (r.end - r.top) / fs });
+    if (r.top > r.bottom) stages.push({ id: "drive", rep: r.n, name: STAGES.drive.name, slot: 2, i0: r.bottom, i1: r.top, dur: (r.top - r.bottom) / fs });
+    if (r.end > r.top) stages.push({ id: "down", rep: r.n, name: STAGES.down.name, slot: 4, i0: r.top, i1: r.end, dur: (r.end - r.top) / fs });
   }
   R.stages = stages;
 }
 
+/** a number as String() writes it (no fixed decimals: 72.5, 80), with the language's decimal mark */
+const plain = (v) => num(v, (String(v).split(".")[1] || "").length);
+
+/** a measurement shown in words, not as its value (the style, the hip snap's direction) */
+export const inWords = (m) => m.label === tr("metric.style.label") || m.label === tr("metric.hipSnap.label");
+
 /** a measurement as shown */
 export function fmtMetric(m) {
-  if (m.label === "Style" || m.label === "Hip snap") return m.note;
-  const d = ["°", "%", "", "W", "J", "ms", "fps", "cm"].includes(m.unit) ? 0 : m.unit === "× bw" ? 2 : 1;
-  return m.value.toFixed(d);
+  if (inWords(m)) return m.note;
+  const d = ["°", "%", "", "W", "J", "ms", "fps", "cm"].includes(m.unit) ? 0 : m.unit === tr("unit.bw") ? 2 : 1;
+  return num(m.value, d);
 }
