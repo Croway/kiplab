@@ -21,6 +21,7 @@ node test/track.mjs clip.mp4 out/clip    # MediaPipe over a real clip → out/cl
 node test/run.mjs out/clip.samples.json --from 0.5 --to 9 [--height 175] [--metrics]
 node test/real.mjs <folder with clips.json>   # real clips vs what a person saw (local only)
 node test/e2e.mjs clip.mp4 out --end 8.6 --expect pullup --reps 3
+node test/compare.mjs out/compare [--dark] [--lang it]   # the compare screen on simulated sets (Chrome, ffmpeg)
 ```
 
 ## Architecture
@@ -49,6 +50,15 @@ card and data again rather than taking the plan's copy (the results plan the cut
 since was lost), and refuses a plan whose part has moved; the results flush a queued settings save first
 (`flushSave()`). Offered on a saved set's results (when it frees 5% or more) and for any ticked sets in the gallery.
 Gallery cards say the rep or swing count once (the tile's, not the title's again).
+
+Comparing (`compare.js`, Bar Path's adapted): two to four sets ticked in the gallery, analysed again from their saved
+samples and options, lined up at `markOf(R)` by the movement shown (one picked by hand included): the first rep's pull
+(`onset`); toes-to-bar, and reps found from the feet whatever they're called, at the first rep's top (the arms barely
+pull, so the onset means little); swings at the first swing back. Videos play and scrub together; one
+chart has every centre of mass path around the bar (the bar is the same place in every set, so no start positions to
+line up), one the hip angle against time from the mark; the measurements side by side, the difference with two. A unit
+the sets share goes under the label; different ones (J and J/kg: a bodyweight for one set only) stay with each value,
+and get no difference.
 
 Text: everything the app shows comes from `locales/en.js` through `tr()` / `num()` (`i18n.js`, shared); static HTML
 through `data-i18n*` and `applyDom()` at startup. Another language = `locales/<lang>.js` with the same keys, listed in
@@ -98,11 +108,13 @@ MediaPipe-like noise. Keyframes must not repeat a time (a jump in shape is an in
 - **Identical** (change in both or neither): `js/video.js`, `js/pose.js`, `js/trim.js`, `js/qr.js`,
   `js/recorder.js`, `js/i18n.js`, `js/clip.js`, `tools/render-icons.mjs`, `test/qr.test.mjs`, `test/clip.test.mjs`,
   `.editorconfig`, the Pages workflow.
-- **Adapted**: `js/store.js` (database name), `js/share.js` (share text), `js/gallery.js` (movements; compare
-  optional), `js/overlay.js` (bar and centre of mass instead of the plate), `sw.js` (file list; cache prefix: each
-  app deletes only its own old caches, so both can live on croway.github.io), `manifest.webmanifest`,
-  `tools/phone.sh` (port 8766), `tools/fetch-vendor.sh` (+ the heavy model), `css/app.css` (Bar Path's plus a Kip
-  Lab section at the end), `js/app.js`, `index.html`, `locales/en.js` (the shared modules' keys are the same).
+- **Adapted**: `js/store.js` (database name), `js/share.js` (share text), `js/gallery.js` (movements; `when` and
+  `MAX` live here, in Bar Path's `compare.js`), `js/compare.js` (lined up at the first rep's pull; centre of mass paths
+  and hip angles for bar paths and bar speed), `js/overlay.js` (bar and centre of mass instead of the plate), `sw.js`
+  (file list; cache prefix: each app deletes only its own old caches, so both can live on croway.github.io),
+  `manifest.webmanifest`, `tools/phone.sh` (port 8766), `tools/fetch-vendor.sh` (+ the heavy model), `css/app.css`
+  (Bar Path's plus a Kip Lab section at the end), `js/app.js`, `index.html`, `locales/en.js` (the shared modules' keys
+  are the same).
 - **Extracted**: `js/signal.js` (Bar Path has these at the top of `analysis.js`), `js/chartkit.js` (the top of
   `charts.js` and `compare.js`).
 - Gallery cards keep Bar Path's schema (`lift` holds the movement), so one gallery can hold both.

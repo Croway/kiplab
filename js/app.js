@@ -10,6 +10,7 @@ import { Timeline } from "./trim.js";
 import { initShare } from "./share.js";
 import * as Store from "./store.js";
 import { Gallery, mb } from "./gallery.js";
+import { Compare } from "./compare.js";
 import { drawPath, pathHit, drawSeries, seriesHit, fillTip, where, GOAL } from "./kipcharts.js";
 import { rampCss, scrub } from "./chartkit.js";
 import { tr, num, rich, applyDom, setLang, pickLang, LANGS } from "./i18n.js";
@@ -35,7 +36,7 @@ const S = {
   cam: null, recorder: null, stopLevel: null, poseNote: "",
   file: null, filmed: 0, entryId: null, thumbFrame: null, runStats: null,
 };
-window.__kiplab = S; // for tests and debugging
+window.__kiplab = S; // for tests and debugging (the compare view: window.__kiplabCompare)
 
 /* ------------------------------------------------------------------ settings, and the athlete's height and weight */
 const KEEP = ["slowmo", "poseModel"];
@@ -59,19 +60,22 @@ const heightCm = () => { const v = parseFloat($("heightCm").value); return v >= 
 const opts = () => ({ W: S.W, slowmo: +$("slowmo").value, facing: S.facingOverride ?? +$("facing").value, move: $("moveSel").value, heightCm: heightCm(), kg: kg() });
 
 /* ------------------------------------------------------------------ screens */
+let cmpAsk = 0; // a compare asked for: any change of screen while its sets are read cancels it
 function setMode(m) {
   S.mode = m;
+  cmpAsk++;
   document.body.dataset.mode = m; // the app's header shows on the start screen only
   $("start").hidden = m !== "start";
   $("gallery").hidden = m !== "gallery";
-  if (m === "gallery") stopPlayback();
+  $("compare").hidden = m !== "compare";
+  if (m === "gallery" || m === "compare") stopPlayback();
   $("camera").hidden = m !== "camera";
   $("work").hidden = !["mark", "running", "results"].includes(m);
   $("mark").hidden = m !== "mark";
   $("running").hidden = m !== "running";
   $("results").hidden = m !== "results";
   $("hud").hidden = m !== "results";
-  $("settings").hidden = ["camera", "running", "gallery"].includes(m);
+  $("settings").hidden = ["camera", "running", "gallery", "compare"].includes(m);
   for (const id of ["btnPrev", "btnNext"]) $(id).disabled = m === "running";
   $("btnPreview").hidden = m !== "mark";
   stopPreview();
@@ -442,7 +446,7 @@ function redrawOverlay(t = video.currentTime) {
   if (!S.W) return;
   if (S.mode === "results" && S.R) {
     const R = S.R, i = R.indexAt(t), vTop = S.geoPath?.vTop || 2;
-    const from = Math.max(0, i - Math.round(1.5 * R.fs)), trail = [];
+    const from = Math.max(0, i - Math.round(2 * R.fs)), trail = []; // the last 2 s: about one swing
     for (let j = from; j <= i; j++) trail.push({ x: R.comX[j], y: R.comY[j], k: R.speed[j] / vTop });
     // the body's pull on the bar (the bar's on the body, reversed): 0.25 m on screen per bodyweight
     const k = 0.25 * R.K[i];
@@ -617,9 +621,13 @@ const flushSave = async () => {
 };
 
 const GAL = new Gallery(
-  { list: $("galList"), filters: $("galFilters"), summary: $("galSummary"), status: $("galStatus"), empty: $("galEmpty"), bar: $("galBar"), barText: $("galBarText"), remove: $("btnGalDelete"), trim: $("btnGalTrim") },
-  { open: (id) => openSaved(id) },
+  { list: $("galList"), filters: $("galFilters"), summary: $("galSummary"), status: $("galStatus"), empty: $("galEmpty"), bar: $("galBar"), barText: $("galBarText"), compare: $("btnGalCompare"), remove: $("btnGalDelete"), trim: $("btnGalTrim") },
+  { open: (id) => openSaved(id), compare: (ids) => openCompare(ids) },
 );
+const CMP = (window.__kiplabCompare = new Compare({
+  videos: $("cmpVideos"), legend: $("cmpLegend"), scrub: $("cmpScrub"), read: $("cmpRead"), play: $("cmpPlay"), prev: $("cmpPrev"), next: $("cmpNext"),
+  rates: $("cmpRates"), path: $("cmpPath"), hips: $("cmpHips"), table: $("cmpTable"), note: $("cmpNote"),
+}));
 let howtoSet = false;
 async function galleryCount() {
   const n = await GAL.count();
@@ -636,6 +644,7 @@ function push(screen) {
 }
 async function showGallery(fromHistory = false) {
   if (!fromHistory && S.mode !== "gallery") push("gallery");
+  if (S.mode === "compare") CMP.close();
   setMode("gallery");
   await GAL.refresh();
 }
@@ -646,18 +655,31 @@ async function openSaved(id) {
   const type = got.video.type || "video/mp4";
   await openVideo(new File([got.video], got.card.name, { type }), got.card.name, false, got);
 }
+/** ids ticked in the gallery; fromHistory: Forward back onto a comparison (its entry holds the ids) */
+async function openCompare(ids, fromHistory = false) {
+  await flushSave(); // a movement just picked on a set's results, still waiting to be saved
+  const ask = ++cmpAsk;
+  const items = (await Promise.all(ids.map((id) => Store.get(id).catch(() => null)))).filter(Boolean);
+  if (ask !== cmpAsk) return; // the screen changed (Back) while the sets were read
+  if (items.length < 2) { if (fromHistory) history.back(); else GAL.refresh(); return; }
+  if (!fromHistory) { push("compare"); history.replaceState({ screen: "compare", ids }, ""); }
+  setMode("compare");
+  await CMP.open(items);
+}
 window.addEventListener("popstate", (e) => {
   const to = e.state?.screen ?? "start";
   if (S.mode === "running") S.abort?.abort();
+  if (S.mode === "compare" && to !== "compare") CMP.close();
   if (to === "gallery") return showGallery(true);
   if ((to === "results" || to === "lift") && S.R) { setMode("results"); drawCharts(); return seekTo(video.currentTime); }
+  if (to === "compare" && e.state.ids) return openCompare(e.state.ids, true);
   if (to === "mark" && S.src) { setMode("mark"); return seekTo(S.start); }
   stopPlayback();
   setMode("start");
   galleryCount();
 });
 for (const id of ["btnGallery", "btnGallery2"]) $(id).addEventListener("click", () => showGallery());
-$("btnGalBack").addEventListener("click", () => history.back());
+for (const id of ["btnGalBack", "btnCmpBack"]) $(id).addEventListener("click", () => history.back());
 $("btnDelete").addEventListener("click", async () => {
   if (!S.entryId || !confirm(tr("res.confirmDelete"))) return;
   await Store.remove(S.entryId).catch(() => {});
@@ -782,7 +804,7 @@ $("poseModel").addEventListener("change", () => { saveSettings(); if (S.mode ===
 
 /* ------------------------------------------------------------------ redraw on resize / theme */
 let rz = 0;
-const redraw = () => { cancelAnimationFrame(rz); rz = requestAnimationFrame(() => { drawCharts(); redrawOverlay(); }); };
+const redraw = () => { cancelAnimationFrame(rz); rz = requestAnimationFrame(() => { drawCharts(); redrawOverlay(); if (S.mode === "compare") CMP.redraw(); }); };
 window.addEventListener("resize", redraw);
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
 new ResizeObserver(redraw).observe(viewer);

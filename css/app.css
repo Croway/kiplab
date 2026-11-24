@@ -376,6 +376,7 @@ dialog.sheet .actions > * { flex: 1 1 auto; }
 .table.reps td.no { color: var(--critical-text); }
 .table.reps td.maybe { color: var(--warning-text); }
 .table.reps th, .table.reps td { padding-left: 6px; }
+.table.cmp td.v.words { white-space: normal; } /* a measurement in words (the style, the hip snap) */
 .best { color: var(--warning-text); width: 14px; height: 14px; }
 .legend.icons .i { width: 18px; height: 18px; }
 .legend.icons .ok { color: var(--good-text); }

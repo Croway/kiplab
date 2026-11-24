@@ -10,7 +10,7 @@ verbose=${1:-}
 # identical: change them in both apps, or not at all
 SAME="js/video.js js/pose.js js/trim.js js/qr.js js/recorder.js js/i18n.js js/clip.js tools/render-icons.mjs test/qr.test.mjs test/clip.test.mjs .editorconfig .github/workflows/pages.yml"
 # adapted: the same file with app-specific changes (see CLAUDE.md, "Shared with Bar Path")
-ADAPTED="js/store.js js/share.js js/gallery.js js/overlay.js sw.js manifest.webmanifest tools/phone.sh tools/fetch-vendor.sh .gitignore css/app.css js/app.js index.html locales/en.js"
+ADAPTED="js/store.js js/share.js js/gallery.js js/compare.js js/overlay.js sw.js manifest.webmanifest tools/phone.sh tools/fetch-vendor.sh .gitignore css/app.css js/app.js index.html locales/en.js"
 bad=0
 for f in $SAME; do
   if cmp -s "$f" "$B/$f"; then echo "identical  $f"; else echo "DRIFTED    $f (should be identical)"; bad=1; [ -n "$verbose" ] && diff -u "$B/$f" "$f"; fi

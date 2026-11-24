@@ -1,6 +1,7 @@
 /* The gallery screen: every analysed set kept on this phone, newest filmed first, filterable by movement. Tap one
- * to open its analysis again (no tracking); tick some to delete them (compare comes later: refs.compare is
- * optional). Bar Path's gallery.js with the movements for lifts; a card's `lift` field holds the movement. */
+ * to open its analysis again (no tracking); tick two to four to compare them, or any to delete them or keep only
+ * their analysed part. Bar Path's gallery.js with the movements for lifts; a card's `lift` field holds the
+ * movement. (`when` and MAX live in Bar Path's compare.js; here compare.js takes them from this file.) */
 import * as Store from "./store.js";
 import { MOVES as LIFTS } from "./kip.js";
 import { tr, num, getLang } from "./i18n.js";
@@ -190,7 +191,7 @@ export class Gallery {
     const n = this.sel.size;
     this.r.bar.hidden = n === 0;
     for (const b of this.r.bar.querySelectorAll("button")) b.disabled = false;
-    this.r.barText.textContent = tr("gal.selected", { n });
+    this.r.barText.textContent = tr(this.r.compare && n < 2 ? "gal.selectedPick" : "gal.selected", { n });
     for (const box of this.r.list.querySelectorAll(".pick input")) box.disabled = false; // any number: delete, trim
     if (this.r.compare) this.r.compare.disabled = n < 2 || n > MAX; // compare: 2 to MAX
   }

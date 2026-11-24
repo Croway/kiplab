@@ -69,8 +69,9 @@ export default {
 
   // gallery screen (gallery.js)
   "gal.filters": "Show",
-  "gal.empty": "Every set you analyse is kept here, on this phone, to open again.",
-  "gal.hint": "Tap a set to see its analysis again. Tick sets to keep only their analysed part, or to delete them.",
+  "gal.empty": "Every set you analyse is kept here, on this phone, to open again and to compare.",
+  "gal.hint": "Tap a set to see its analysis again. Tick two to four to compare them, or any to keep only their analysed part or delete them.",
+  "gal.compare": "Compare",
   "gal.trim": "Trim",
   "gal.trimChecking": "Checking the videos…",
   "gal.trimming": "Trimming {i} of {n}…",
@@ -86,9 +87,29 @@ export default {
   "gal.summaryUsed": { one: "{n} set · {size} on this phone", other: "{n} sets · {size} on this phone" },
   "gal.confirmDelete": { one: "Delete this set and its video from this phone?", other: "Delete these {n} sets and their videos from this phone?" },
   "gal.selected": "{n} selected",
+  "gal.selectedPick": "{n} selected · pick another to compare",
   "gal.select": "Select {title}, {when}",
   "gal.metaKg": "{time} · {kg} kg",
   "gal.repsOf": { one: "{v} / {n} rep", other: "{v} / {n} reps" },
+
+  // compare screen (compare.js)
+  "cmp.back": "Back to the gallery",
+  "cmp.title": "Compare",
+  "cmp.scrub": "Time from where the sets are lined up",
+  "cmp.read.pull": "{t} s from the first rep's pull",
+  "cmp.read.top": "{t} s from the first rep's top",
+  "cmp.read.swing": "{t} s from the first swing back",
+  "cmp.read.start": "{t} s from the start",
+  "cmp.read.mixed": "{t} s from where each set is lined up",
+  "cmp.differentMoves": "These are different movements ({moves}): their standards, and some of their measurements, differ.",
+  "cmp.paths.title": "Around the bar · side view",
+  "cmp.paths.sub": "Each set's centre of mass around the bar, true scale. Drag across them to scrub every video.",
+  "cmp.paths.aria": "Centre of mass paths of the sets compared",
+  "cmp.hips.title": "Hips · hollow and arch",
+  "cmp.hips.sub": "Lined up at the first rep's pull (toes-to-bar: at its top; swings: at the first swing back). Drag across it to scrub.",
+  "cmp.hips.aria": "Hip angles of the sets compared",
+  "cmp.hips.axis": "+ hollow · − arch",
+  "cmp.table.title": "Every measurement",
 
   // in-app camera
   "cam.markBar": "bar about here",

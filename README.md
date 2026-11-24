@@ -15,7 +15,7 @@ in Chrome, and Bar Path's sibling: same structure, much of the same code, meant 
 | Toes-to-bar | reps; toes to the bar; heels behind it before each rep; force; work per rep |
 | Bar muscle-up | reps; arms long at the bottom; lockout above the bar; from the kip; hips and pull timing; force |
 | Kip swing | swings, swing size, hollow and arch range at hips and shoulders, energy added per swing |
-| All | camera angle (measured), whether the phone moved, frame rate; energy, force and body-shape charts; the path around the bar; CSV/JSON export; a gallery of sets, whose videos can be cut to just the analysed part |
+| All | camera angle (measured), whether the phone moved, frame rate; energy, force and body-shape charts; the path around the bar; CSV/JSON export; a gallery of sets, whose videos can be cut to just the analysed part, and where two to four sets can be compared: videos in step, lined up at the first rep's pull, their paths around the bar, hips and every measurement side by side |
 
 ## The physics
 
@@ -71,6 +71,8 @@ Tests:
 - `test/real.mjs <folder>`: real clips against what a person saw in them (local only: clips stay out of the repo).
 - `test/e2e.mjs <video> <out>`: the whole app at S23 size in headless Chrome: choose the set by dragging the
   timeline, track, results, scrub, gallery, share QR.
+- `test/compare.mjs <out>`: the compare screen in headless Chrome on simulated sets (synthetic videos): tick two,
+  compare, scrub, play, back, then three.
 
 ## Shared with Bar Path
 

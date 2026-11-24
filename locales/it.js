@@ -69,8 +69,9 @@ export default {
 
   // gallery screen (gallery.js)
   "gal.filters": "Mostra",
-  "gal.empty": "Ogni serie che analizzi resta qui, su questo telefono, per riaprirla.",
-  "gal.hint": "Tocca una serie per rivederne l'analisi. Spunta delle serie per tenerne solo la parte analizzata o per eliminarle.",
+  "gal.empty": "Ogni serie che analizzi resta qui, su questo telefono, per riaprirla e confrontarla.",
+  "gal.hint": "Tocca una serie per rivederne l'analisi. Spuntane da due a quattro per confrontarle, o quante vuoi per tenerne solo la parte analizzata o eliminarle.",
+  "gal.compare": "Confronta",
   "gal.trim": "Riduci",
   "gal.trimChecking": "Controllo i video…",
   "gal.trimming": "Riduco {i} di {n}…",
@@ -86,9 +87,29 @@ export default {
   "gal.summaryUsed": { one: "{n} serie · {size} su questo telefono", other: "{n} serie · {size} su questo telefono" },
   "gal.confirmDelete": { one: "Eliminare questa serie e il suo video da questo telefono?", other: "Eliminare queste {n} serie e i loro video da questo telefono?" },
   "gal.selected": "Selezione: {n}",
+  "gal.selectedPick": "Selezione: {n} · scegline un'altra da confrontare",
   "gal.select": "Seleziona {title}, {when}",
   "gal.metaKg": "{time} · {kg} kg",
   "gal.repsOf": { one: "{v} / {n} ripetizione", other: "{v} / {n} ripetizioni" },
+
+  // compare screen (compare.js)
+  "cmp.back": "Torna alla galleria",
+  "cmp.title": "Confronto",
+  "cmp.scrub": "Tempo dal punto in cui le serie sono allineate",
+  "cmp.read.pull": "{t} s dalla tirata della prima ripetizione",
+  "cmp.read.top": "{t} s dal punto più alto della prima ripetizione",
+  "cmp.read.swing": "{t} s dalla prima oscillazione indietro",
+  "cmp.read.start": "{t} s dall'inizio",
+  "cmp.read.mixed": "{t} s dal punto in cui è allineata ogni serie",
+  "cmp.differentMoves": "Sono movimenti diversi ({moves}): cambiano gli standard, e alcune misure.",
+  "cmp.paths.title": "Attorno alla sbarra · vista laterale",
+  "cmp.paths.sub": "Il baricentro di ogni serie attorno alla sbarra, in scala reale. Trascina il dito sopra per scorrere tutti i video.",
+  "cmp.paths.aria": "Traiettorie del baricentro delle serie a confronto",
+  "cmp.hips.title": "Anche · hollow e arch",
+  "cmp.hips.sub": "Allineate alla tirata della prima ripetizione (toes-to-bar: al punto più alto; oscillazioni: alla prima oscillazione indietro). Trascina il dito sopra per scorrere.",
+  "cmp.hips.aria": "Angoli delle anche delle serie a confronto",
+  "cmp.hips.axis": "+ hollow · − arch",
+  "cmp.table.title": "Tutte le misure",
 
   // in-app camera
   "cam.markBar": "sbarra circa qui",

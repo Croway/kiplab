@@ -117,14 +117,54 @@
     </div>
     <div class="chips" id="galFilters" role="group" aria-label="Show" data-i18n-attr="aria-label: gal.filters"></div>
     <p class="hint" id="galStatus" aria-live="polite"></p>
-    <p class="hint" id="galEmpty" hidden data-i18n="gal.empty">Every set you analyse is kept here, on this phone, to open again.</p>
+    <p class="hint" id="galEmpty" hidden data-i18n="gal.empty">Every set you analyse is kept here, on this phone, to open again and to compare.</p>
     <ul class="lifts" id="galList"></ul>
-    <p class="hint" data-i18n="gal.hint">Tap a set to see its analysis again. Tick sets to keep only their analysed part, or to delete them.</p>
+    <p class="hint" data-i18n="gal.hint">Tap a set to see its analysis again. Tick two to four to compare them, or any to keep only their analysed part or delete them.</p>
     <div class="selbar" id="galBar" hidden>
       <span id="galBarText"></span>
       <button id="btnGalDelete" class="danger" type="button" data-i18n="common.delete">Delete</button>
       <button id="btnGalTrim" type="button" data-i18n="gal.trim">Trim</button>
+      <button id="btnGalCompare" class="primary" type="button" data-i18n="gal.compare">Compare</button>
     </div>
+  </section>
+
+  <!-- comparing saved sets -->
+  <section id="compare" hidden>
+    <div class="screen-head">
+      <button id="btnCmpBack" class="back" type="button" aria-label="Back to the gallery" data-i18n-attr="aria-label: cmp.back"><svg class="i"><use href="#i-left"/></svg></button>
+      <h2 data-i18n="cmp.title">Compare</h2>
+    </div>
+    <ul class="cmp-legend" id="cmpLegend"></ul>
+    <p class="hint" id="cmpNote" hidden></p>
+    <div class="cmp-videos" id="cmpVideos"></div>
+    <div class="scrub">
+      <button id="cmpPrev" type="button" aria-label="Back one frame" data-i18n-attr="aria-label: work.prev"><svg class="i"><use href="#i-left"/></svg></button>
+      <input id="cmpScrub" type="range" aria-label="Time from where the sets are lined up" data-i18n-attr="aria-label: cmp.scrub">
+      <button id="cmpNext" type="button" aria-label="Forward one frame" data-i18n-attr="aria-label: work.next"><svg class="i"><use href="#i-right"/></svg></button>
+    </div>
+    <div class="replay">
+      <button id="cmpPlay" class="primary" type="button" data-i18n="common.play">Play</button>
+      <div class="seg" role="group" aria-label="Replay speed" data-i18n-attr="aria-label: res.speed" id="cmpRates">
+        <button type="button" data-rate="0.25" aria-pressed="true">¼×</button>
+        <button type="button" data-rate="0.5" aria-pressed="false">½×</button>
+        <button type="button" data-rate="1" aria-pressed="false">1×</button>
+      </div>
+    </div>
+    <p class="hint num" id="cmpRead"></p>
+    <article class="card">
+      <h3 data-i18n="cmp.paths.title">Around the bar · side view</h3>
+      <p class="sub" data-i18n="cmp.paths.sub">Each set's centre of mass around the bar, true scale. Drag across them to scrub every video.</p>
+      <div class="chart"><canvas id="cmpPath" role="img" aria-label="Centre of mass paths of the sets compared" data-i18n-attr="aria-label: cmp.paths.aria"></canvas></div>
+    </article>
+    <article class="card">
+      <h3 data-i18n="cmp.hips.title">Hips · hollow and arch</h3>
+      <p class="sub" data-i18n="cmp.hips.sub">Lined up at the first rep's pull (toes-to-bar: at its top; swings: at the first swing back). Drag across it to scrub.</p>
+      <div class="chart"><canvas id="cmpHips" role="img" aria-label="Hip angles of the sets compared" data-i18n-attr="aria-label: cmp.hips.aria"></canvas></div>
+    </article>
+    <article class="card">
+      <h3 data-i18n="cmp.table.title">Every measurement</h3>
+      <div class="table-wrap"><table class="table cmp" id="cmpTable"></table></div>
+    </article>
   </section>
 
   <!-- in-app camera -->
