@@ -237,6 +237,7 @@ export default {
   "tip.energy": "energy {energy} · {v} m/s",
   "tip.angles": "hips {hip}° · shoulders {sh}°",
   "tip.when": "{t} s · {where}",
+  "where.offBar": "Off the bar",
   "where.swing": "Swing",
   "where.rep": "Rep {n}",
   "where.repStage": "Rep {n} · {stage}",

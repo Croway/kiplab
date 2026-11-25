@@ -5,7 +5,7 @@
  *  - POST ./share (the manifest's share target): keeps the shared video, then opens the app with ?shared=1.
  */
 const APP = "kiplab";
-const SHELL = `${APP}-shell-v5`;
+const SHELL = `${APP}-shell-v6`;
 const VENDOR = `${APP}-vendor-0.10.21`;
 const SHARE = `${APP}-share`;
 const SHELL_FILES = [

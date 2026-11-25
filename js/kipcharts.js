@@ -6,11 +6,20 @@ import { tr, num } from "./i18n.js";
 /** the point that has to reach the bar, by movement: its key in the plane (R.pl); in words: tr(`goal.${key}`) */
 export const GOAL = { pullup: "chin", c2b: "sh", bmu: "sh", t2b: "toe", swing: "toe" };
 export const where = (R, i) => {
+  if (!R.held[i]) return tr("where.offBar");
   const r = R.repOf[i];
   if (!r) return tr("where.swing");
   const s = R.stages.find((q) => q.rep === r && i >= q.i0 && i <= q.i1);
   return s ? tr("where.repStage", { n: r, stage: s.name }) : tr("where.rep", { n: r });
 };
+
+/** Add one subpath per bout, so paths never bridge a dismount. */
+export function contactPath(ctx, R, x, y) {
+  for (const { first, last } of R.bouts) {
+    ctx.moveTo(x(first), y(first));
+    for (let i = first + 1; i <= last; i++) ctx.lineTo(x(i), y(i));
+  }
+}
 
 /* ------------------------------------------------------------------ path around the bar */
 export function drawPath(canvas, R, cursor) {
@@ -19,6 +28,7 @@ export function drawPath(canvas, R, cursor) {
   const G = R.pl[gk];
   let fl = -0.2, fr = 0.2, ub = 0.15, ul = -0.3, vTop = 0;
   for (let i = 0; i < R.n; i++) {
+    if (!R.held[i]) continue;
     for (const [f, u] of [[R.comF[i], R.comU[i]], [G.f[i], G.u[i]]]) { fl = Math.min(fl, f); fr = Math.max(fr, f); ul = Math.min(ul, u); ub = Math.max(ub, u); }
     vTop = Math.max(vTop, R.speed[i]);
   }
@@ -53,11 +63,12 @@ export function drawPath(canvas, R, cursor) {
   // the goal point's path, thin; the centre of mass's, coloured by speed
   ctx.lineCap = "round"; ctx.lineJoin = "round";
   ctx.strokeStyle = tok("--ink-2"); ctx.globalAlpha = 0.45; ctx.lineWidth = 1.25;
-  ctx.beginPath(); for (let i = 0; i < R.n; i++) (i ? ctx.lineTo : ctx.moveTo).call(ctx, px(G.f[i]), py(G.u[i])); ctx.stroke();
+  ctx.beginPath(); contactPath(ctx, R, i => px(G.f[i]), i => py(G.u[i])); ctx.stroke();
   ctx.globalAlpha = 1;
   const stops = rampStops();
   ctx.lineWidth = 2.5;
   for (let i = 1; i < R.n; i++) {
+    if (!R.held[i] || !R.held[i - 1]) continue;
     ctx.strokeStyle = rampAt(stops, R.speed[i] / vTop);
     ctx.beginPath(); ctx.moveTo(px(R.comF[i - 1]), py(R.comU[i - 1])); ctx.lineTo(px(R.comF[i]), py(R.comU[i])); ctx.stroke();
   }
@@ -68,7 +79,7 @@ export function drawPath(canvas, R, cursor) {
   for (const r of R.reps) { dot(ctx, px(R.comF[r.cTop]), py(R.comU[r.cTop]), 3.5, ink); placed.push(dotBox(px(R.comF[r.cTop]), py(R.comU[r.cTop]), 3.5)); }
   label(ctx, tr("chart.bar"), px(0), py(0), "right", w, placed);
   for (const r of R.reps) label(ctx, String(r.n), px(R.comF[r.cTop]), py(R.comU[r.cTop]), "right", w, placed);
-  if (cursor !== null) {
+  if (cursor !== null && R.held[cursor]) {
     dot(ctx, px(G.f[cursor]), py(G.u[cursor]), 3.5, tok("--ink-2"));
     dot(ctx, px(R.comF[cursor]), py(R.comU[cursor]), 5, tok("--accent"));
   }
@@ -76,7 +87,7 @@ export function drawPath(canvas, R, cursor) {
 }
 export function pathHit(geo, R, x, y) {
   let best = 0, bd = Infinity;
-  for (let i = 0; i < R.n; i++) { const d = (geo.px(R.comF[i]) - x) ** 2 + (geo.py(R.comU[i]) - y) ** 2; if (d < bd) { bd = d; best = i; } }
+  for (let i = 0; i < R.n; i++) { if (!R.held[i]) continue; const d = (geo.px(R.comF[i]) - x) ** 2 + (geo.py(R.comU[i]) - y) ** 2; if (d < bd) { bd = d; best = i; } }
   return best;
 }
 
@@ -93,7 +104,7 @@ export function drawSeries(canvas, R, cursor, { lines, unit, d = 1, ref = null, 
   const pad0 = Math.round(0.5 * R.fs);
   const a = R.stages.length ? Math.max(0, Math.min(...R.stages.map((s) => s.i0)) - pad0) : 0;
   const b = R.stages.length ? Math.min(R.n - 1, Math.max(...R.stages.map((s) => s.i1)) + pad0) : R.n - 1;
-  for (const L of lines) for (let i = a; i <= b; i++) { lo = Math.min(lo, L.v[i]); hi = Math.max(hi, L.v[i]); }
+  for (const L of lines) for (let i = a; i <= b; i++) { if (!R.held[i]) continue; lo = Math.min(lo, L.v[i]); hi = Math.max(hi, L.v[i]); }
   if (ref !== null) { lo = Math.min(lo, ref); hi = Math.max(hi, ref); }
   const pad = 0.08 * (hi - lo || 1);
   lo -= pad; hi += pad;
@@ -135,7 +146,7 @@ export function drawSeries(canvas, R, cursor, { lines, unit, d = 1, ref = null, 
     ctx.strokeStyle = tok(L.color); ctx.lineWidth = L.width || 2;
     if (L.dash) ctx.setLineDash(L.dash);
     ctx.beginPath();
-    for (let i = 0; i < R.n; i++) (i ? ctx.lineTo : ctx.moveTo).call(ctx, px(t(i)), py(L.v[i]));
+    contactPath(ctx, R, i => px(t(i)), i => py(L.v[i]));
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -144,7 +155,7 @@ export function drawSeries(canvas, R, cursor, { lines, unit, d = 1, ref = null, 
   if (cursor !== null) {
     ctx.strokeStyle = tok("--ink-2"); ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(Math.round(px(t(cursor))) + 0.5, m.t); ctx.lineTo(Math.round(px(t(cursor))) + 0.5, h - m.b); ctx.stroke();
-    for (const L of lines) dot(ctx, px(t(cursor)), clamp(py(L.v[cursor]), m.t, h - m.b), 3.5, tok(L.color));
+    if (R.held[cursor]) for (const L of lines) dot(ctx, px(t(cursor)), clamp(py(L.v[cursor]), m.t, h - m.b), 3.5, tok(L.color));
   }
   return { m, w, n: R.n };
 }
@@ -156,6 +167,7 @@ export function seriesHit(geo, x) {
 /** tooltip for sample i: built with textContent */
 export function fillTip(tip, R, i) {
   tip.replaceChildren();
+  if (!R.held[i]) { tip.textContent = where(R, i); return; }
   const b = document.createElement("b");
   b.textContent = tr("tip.force", { f: num(R.Fb[i], 2) });
   tip.append(b);

@@ -2,6 +2,7 @@
  * through the bar, physics consistency; filmed side-on and turned, with tracking noise.
  *   node test/kip.test.mjs [--verbose] */
 import { simulate, film, PROGRAMS } from "./sim.mjs";
+import { contactPath, where } from "../js/kipcharts.js";
 import { analyse } from "../js/kip.js";
 
 const verbose = process.argv.includes("--verbose");
@@ -69,6 +70,54 @@ for (const alpha of [0, 40]) {
   const s = simulate({ ...PROGRAMS.kipping({ lag: 0.3, depth: 0.05, damp: 400 }), fps: 60 });
   const R = analyse(film(s, { alpha: 20, noise: 3, wobble: 2 }), { W: 1080, heightCm: 178 });
   ok(!R.error && R.move === "pullup" && !R.kipping && R.reps.length === 3, `strict pull-ups recognised (${R.error || R.title})`);
+}
+// Release, lower the hands to hip height, then remount. The two bouts must
+// retain separate rep boundaries and cannot accumulate work during the break.
+{
+  const set = film(simulate({ ...PROGRAMS.kipping({ lag: 0.15 }), fps: 60 }), { alpha: 20 });
+  const end = set.at(-1).t, dt = 1 / 60;
+  const floor = Array.from({ length: 180 }, (_, i) => {
+    const pose = set.at(-1).pose.map(p => ({ ...p, x: p.x + 150, y: p.y + 160 }));
+    for (let j = 15; j <= 22; j++) pose[j].y = pose[23].y + 60;
+    return { t: end + (i + 1) * dt, pose };
+  });
+  const remount = floor.at(-1).t + dt;
+  const sets = [...set, ...floor, ...set.map(s => ({ ...s, t: s.t + remount }))];
+  const r = analyse(sets, { W: 1080, heightCm: 178 });
+  ok(r.reps?.length === 6 && r.reps[3].cycle === null && r.reps[2].kept === null,
+    "release and remount start a fresh three-rep set");
+  ok(r.reps?.every(q => r.tVideo(q.end) <= end + dt || r.tVideo(q.begin) >= remount - dt),
+    "rep windows exclude time spent off the bar");
+  const single = analyse(set, { W: 1080, heightCm: 178 });
+  near(r.consistency, single.consistency, 0.025, "standing away from the bar does not distort the physics check");
+  const drawn = [], starts = [];
+  contactPath({ moveTo(i) { starts.push(i); drawn.push(i); }, lineTo(i) { drawn.push(i); } }, r, i => i, () => 0);
+  ok(starts.length === 2 && drawn.every(i => r.held[i]) && where(r, r.indexAt(end + 1)) === "Off the bar",
+    "chart paths restart after remount and the cursor identifies the break");
+  const duration = r.metrics.find(m => m.label === "Analysed").value;
+  near(duration, 2 * single.onBar[1], 0.1, "analysed duration counts both bouts and excludes the break");
+  near(r.arm, single.arm, 0.03, "standing between bouts does not inflate hanging arm length");
+  const lowered = floor.map((s, i) => {
+    const w = Math.min(1, (i + 1) / 60), pose = set.at(-1).pose.map((p, j) => ({ ...p, y: p.y + w * (s.pose[j].y - p.y) }));
+    return { t: s.t, pose };
+  });
+  const release = analyse([...set, ...lowered], { W: 1080, heightCm: 178 });
+  ok(release.reps?.length === 3 && release.onBar[1] < end + 0.85, "slow dismount does not turn into support on the floor");
+  const lost = set.map(s => s.t > 5.75 && s.t < 6.08 ? { ...s, pose: null } : s);
+  const dropout = analyse(lost, { W: 1080, heightCm: 178 });
+  ok(dropout.reps?.length === 3 && dropout.reps[1].cycle > 0, "a short pose dropout does not split a pull");
+  const strict = PROGRAMS.kipping({ lag: 0.3, depth: 0.05, damp: 400 });
+  const filmed = film(simulate({ ...strict, fps: 60 }), { alpha: 20 });
+  const top = filmed.findIndex(s => s.t >= strict.tops[0]);
+  const hold = Array.from({ length: 120 }, () => filmed[top]);
+  const panned = [...filmed.slice(0, top), ...hold, ...filmed.slice(top)].map((s, i) => ({
+    t: i / 60, pose: s.pose.map(p => ({ ...p, x: p.x + 80 * i / 60 })),
+  }));
+  const heldTop = analyse(panned, { W: 1080, heightCm: 178 });
+  ok(heldTop.bouts.length === 1 && heldTop.reps.length === 3, "horizontal camera pan through a two-second bent-arm hold");
+  const pan = set.map(s => ({ ...s, pose: s.pose.map(p => ({ ...p, x: p.x + 100 * Math.sin(s.t) })) }));
+  const moving = analyse(pan, { W: 1080, heightCm: 178 });
+  ok(moving.moving && moving.reps?.length === 3, "camera pan preserves contact and rep count");
 }
 console.log(fails ? `\n${fails} FAILED` : "\nALL PASS");
 process.exit(fails ? 1 : 0);

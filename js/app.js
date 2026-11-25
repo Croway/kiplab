@@ -11,7 +11,7 @@ import { initShare } from "./share.js";
 import * as Store from "./store.js";
 import { Gallery, mb } from "./gallery.js";
 import { Compare } from "./compare.js";
-import { drawPath, pathHit, drawSeries, seriesHit, fillTip, where, GOAL } from "./kipcharts.js";
+import { drawPath, pathHit, drawSeries, seriesHit, fillTip, where, contactPath, GOAL } from "./kipcharts.js";
 import { rampCss, scrub } from "./chartkit.js";
 import { tr, num, rich, applyDom, setLang, pickLang, LANGS } from "./i18n.js";
 
@@ -424,6 +424,7 @@ function drawCharts() {
 }
 function hud(i) {
   const R = S.R;
+  if (!R.held[i]) { $("hud").textContent = where(R, i); return; }
   const E = R.kg ? `${Math.round(R.Er[i] * R.kg)} J` : `${num(R.Er[i], 1)} J/kg`;
   $("hud").textContent = tr("res.hud", { where: where(R, i), f: num(R.Fb[i], 1), energy: E });
 }
@@ -446,7 +447,13 @@ function redrawOverlay(t = video.currentTime) {
   if (!S.W) return;
   if (S.mode === "results" && S.R) {
     const R = S.R, i = R.indexAt(t), vTop = S.geoPath?.vTop || 2;
-    const from = Math.max(0, i - Math.round(2 * R.fs)), trail = []; // the last 2 s: about one swing
+    if (!R.held[i]) {
+      Ov.draw(overlay, { W: S.W, H: S.H, pose: nearestSample(t).pose });
+      hud(i);
+      return;
+    }
+    const bout = R.bouts.find(b => b.first <= i && i <= b.last);
+    const from = Math.max(bout.first, i - Math.round(2 * R.fs)), trail = []; // the last 2 s: about one swing
     for (let j = from; j <= i; j++) trail.push({ x: R.comX[j], y: R.comY[j], k: R.speed[j] / vTop });
     // the body's pull on the bar (the bar's on the body, reversed): 0.25 m on screen per bodyweight
     const k = 0.25 * R.K[i];
@@ -570,7 +577,7 @@ function thumbnail(R) {
   if (!f) return Promise.resolve(null);
   const pad = 0.35 * R.K[0];
   let x0 = R.Bx[0], x1 = R.Bx[0], y0 = R.By[0], y1 = R.By[0];
-  for (let i = 0; i < R.n; i++) { x0 = Math.min(x0, R.comX[i]); x1 = Math.max(x1, R.comX[i]); y0 = Math.min(y0, R.comY[i]); y1 = Math.max(y1, R.comY[i]); }
+  for (let i = 0; i < R.n; i++) { if (!R.held[i]) continue; x0 = Math.min(x0, R.comX[i]); x1 = Math.max(x1, R.comX[i]); y0 = Math.min(y0, R.comY[i]); y1 = Math.max(y1, R.comY[i]); }
   x0 -= pad; x1 += pad; y0 -= pad; y1 += pad;
   let w = x1 - x0, h = y1 - y0;
   if (w / h < 0.75) { x0 -= (0.75 * h - w) / 2; w = 0.75 * h; } else { y0 -= (w / 0.75 - h) / 2; h = w / 0.75; }
@@ -580,7 +587,7 @@ function thumbnail(R) {
   const c = document.createElement("canvas"), g = c.getContext("2d"), k = f.width / S.W;
   c.width = 150; c.height = 200;
   g.drawImage(f, x0 * k, y0 * k, w * k, h * k, 0, 0, c.width, c.height);
-  const s = c.width / w, path = () => { g.beginPath(); for (let i = 0; i < R.n; i++) g[i ? "lineTo" : "moveTo"]((R.comX[i] - x0) * s, (R.comY[i] - y0) * s); };
+  const s = c.width / w, path = () => { g.beginPath(); contactPath(g, R, i => (R.comX[i] - x0) * s, i => (R.comY[i] - y0) * s); };
   g.lineJoin = g.lineCap = "round";
   g.lineWidth = 5; g.strokeStyle = "rgba(0,0,0,0.55)"; path(); g.stroke(); // on footage: the overlay's halo and blue
   g.lineWidth = 2.5; g.strokeStyle = "#3987e5"; path(); g.stroke();

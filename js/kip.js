@@ -41,6 +41,49 @@ const rad = (d) => (d * Math.PI) / 180, deg = (r) => (r * 180) / Math.PI;
 /** on the bar: hands above the shoulders (hanging), or above the hips with the body over them (support) */
 const onBarNow = (B) => B.wr.y < B.hip.y;
 
+// Follow the grip from an overhead hang. A moving camera changes the bar's image
+// position gradually. A hand jumping away from that position cannot move the bar.
+function contactSpans(frames) {
+  const spans = [];
+  let span, candidate, anchor, last, atBarHeight;
+  for (const f of frames) {
+    const { sh, hip, grip } = f.B;
+    const torso = Math.hypot(hip.x - sh.x, hip.y - sh.y);
+    const near = (a, radius) => Math.hypot(grip.x - a.x, grip.y - a.y) <= radius * torso;
+    const overhead = sh.y - grip.y > 0.65 * torso;
+    // As the arms bend, keep the last overhead grip as an independent reference.
+    // The shoulders must actually reach that bar before a support can move the
+    // anchor again. Slowly lowering the hands while standing cannot drag it down.
+    if (span && f.t - last <= 0.70 && near(anchor, overhead || atBarHeight ? 0.70 : 0.45)) {
+      if (overhead) atBarHeight = false;
+      else if (sh.y < anchor.y + 0.15 * torso) atBarHeight = true;
+      const w = 1 - Math.exp(-(f.t - last) / 0.18);
+      // A horizontal pan can continue through a bent-arm hold. Keep the
+      // independent bar height to distinguish a slow dismount.
+      anchor.x += w * (grip.x - anchor.x);
+      if (overhead || atBarHeight) anchor.y += w * (grip.y - anchor.y);
+      span.grips.push(f);
+      last = span.end = f.t;
+      continue;
+    }
+    if (span && f.t - last <= 0.70) continue; // allow a few noisy hand observations
+    span = null;
+    if (torso <= 0 || sh.y - grip.y < 0.40 * torso) { candidate = null; continue; }
+    if (!candidate || f.t - candidate.last > 0.20 || !near(candidate, 0.35)) {
+      candidate = { x: grip.x, y: grip.y, t: f.t, last: f.t, rows: [] };
+    }
+    candidate.last = f.t;
+    candidate.rows.push(f);
+    if (f.t - candidate.t < 0.12) continue;
+    spans.push(span = { start: candidate.t, end: f.t, grips: candidate.rows });
+    atBarHeight = false;
+    anchor = { x: grip.x, y: grip.y };
+    last = f.t;
+    candidate = null;
+  }
+  return spans;
+}
+
 /* ------------------------------------------------------------------ the analysis */
 /**
  * samples: [{ t (video s), pose: 33 landmarks in video px or null }]
@@ -55,29 +98,33 @@ export function analyse(samples, opts = {}) {
   const dts = [];
   for (let i = 1; i < posed.length; i++) { const d = real(posed[i].t) - real(posed[i - 1].t); if (d > 1e-5) dts.push(d); }
   const fs = clamp(Math.round(1 / median(dts)), 15, 480);
-  const Bs = bodies(posed.map((s) => s.pose)), sideOn = Bs.sideOn;
+  const Bs = bodies(posed.map((s) => s.pose));
   const fr = posed.map((s, j) => ({ t: real(s.t), P: s.pose, B: Bs[j] }));
 
-  // the part chosen on the timeline is the set: the hands overhead give the bar
-  const on = fr, onHang = fr.filter((f) => onBarNow(f.B));
-  if (onHang.length < Math.max(5, 0.5 * fr.length)) return { error: tr("kip.notOnBar") };
-  const frames = on.map((f) => f.P);
+  const contacts = contactSpans(fr);
+  const attached = contacts.flatMap(s => s.grips);
+  const onHang = attached.filter(f => onBarNow(f.B));
+  if (attached.length < 20 || attached.at(-1).t - attached[0].t < 0.3 || onHang.length < 5) return { error: tr("kip.notOnBar") };
+  // Only contact observations enter the filters. The time grid still spans the
+  // video so each bout can be scrubbed at its original timestamps.
+  const frames = attached.map((f) => f.P);
+  const heldBodies = attached.map(f => f.B);
 
   // which way, the camera's angle, the scale
-  const fc0 = facingOf(on.map((f) => f.B));
+  const fc0 = facingOf(heldBodies);
   const facing = opts.facing === 1 || opts.facing === -1 ? opts.facing : fc0.facing;
-  const view = viewAngle(frames, opts.W || 1000, { heightM, facing, Bs: on.map((f) => f.B) });
+  const view = viewAngle(frames, opts.W || 1000, { heightM, facing, Bs: heldBodies });
   const c = Math.max(0.3, view.c);
-  const scale = bodyScale(on.map((f) => f.B), c, heightM);
+  const scale = bodyScale(heldBodies, c, heightM);
 
   // the bar: where the hands close on it. A still phone: one place. A phone that moves (the hands' place drifts on
   // screen, slowly: the hands themselves only turn on the bar): followed frame by frame.
   const gmx = median(onHang.map((f) => f.B.grip.x)), gmy = median(onHang.map((f) => f.B.grip.y));
-  const ft = on.map((f) => f.t);
+  const ft = attached.map((f) => f.t);
   let wander;
   {
     const Tg = Float64Array.from({ length: Math.max(8, Math.floor((ft[ft.length - 1] - ft[0]) * fs)) }, (_, i) => ft[0] + i / fs);
-    const sx = filtfilt(resample(ft, on.map((f) => f.B.grip.x), Tg), Math.min(0.4, fs / 4), fs), sy = filtfilt(resample(ft, on.map((f) => f.B.grip.y), Tg), Math.min(0.4, fs / 4), fs);
+    const sx = filtfilt(resample(ft, attached.map((f) => f.B.grip.x), Tg), Math.min(0.4, fs / 4), fs), sy = filtfilt(resample(ft, attached.map((f) => f.B.grip.y), Tg), Math.min(0.4, fs / 4), fs);
     const mx = median(sx), my = median(sy);
     wander = quantile(Array.from(sx, (v, i) => Math.hypot(v - mx, sy[i] - my)), 0.95) / scale.statPx;
   }
@@ -85,22 +132,29 @@ export function analyse(samples, opts = {}) {
   const cam = camera(c, view.front, facing);
 
   // the grid: the span on the bar, in real seconds
-  const t0 = on[0].t, t1 = on[on.length - 1].t;
+  const t0 = attached[0].t, t1 = attached.at(-1).t;
   const n = Math.floor((t1 - t0) * fs) + 1;
   const T = Float64Array.from({ length: n }, (_, i) => t0 + i / fs);
+  const bouts = contacts.map(s => ({
+    first: clamp(Math.ceil((s.start - t0) * fs), 0, n - 1),
+    last: clamp(Math.floor((s.end - t0) * fs), 0, n - 1),
+  }));
+  const held = new Uint8Array(n);
+  for (const b of bouts) held.fill(1, b.first, b.last + 1);
+  const heldCount = held.reduce((sum, v) => sum + v, 0);
   const fcPos = Math.min(6, fs / 4);
   const img = {};
   for (const k of NAMES) {
-    img[k] = { x: filtfilt(resample(ft, on.map((f) => f.B[k].x), T), fcPos, fs), y: filtfilt(resample(ft, on.map((f) => f.B[k].y), T), fcPos, fs) };
+    img[k] = { x: filtfilt(resample(ft, attached.map((f) => f.B[k].x), T), fcPos, fs), y: filtfilt(resample(ft, attached.map((f) => f.B[k].y), T), fcPos, fs) };
   }
   // the bar, the scale per grid point
   const Bx = new Float64Array(n), By = new Float64Array(n), K = new Float64Array(n);
   if (moving) {
-    const fcB = Math.min(1.5, fs / 4), bx = filtfilt(resample(ft, on.map((f) => f.B.grip.x), T), fcB, fs), by = filtfilt(resample(ft, on.map((f) => f.B.grip.y), T), fcB, fs);
+    const fcB = Math.min(1.5, fs / 4), bx = filtfilt(resample(ft, attached.map((f) => f.B.grip.x), T), fcB, fs), by = filtfilt(resample(ft, attached.map((f) => f.B.grip.y), T), fcB, fs);
     // the body's size on screen over a 1.5 s window: the phone may come closer or zoom
-    const stat = on.map((f) => { let s = 0; for (const g of RIGID) { const a = f.B[g.from], b = f.B[g.to]; s += Math.hypot((b.x - a.x) / c, b.y - a.y); } return s / RIGID.reduce((q, g) => q + g.len, 0); });
+    const stat = attached.map((f) => { let s = 0; for (const g of RIGID) { const a = f.B[g.from], b = f.B[g.to]; s += Math.hypot((b.x - a.x) / c, b.y - a.y); } return s / RIGID.reduce((q, g) => q + g.len, 0); });
     const half = 0.75;
-    const rolled = ft.map((t) => median(stat.filter((_, j) => Math.abs(ft[j] - t) <= half)));
+    const rolled = ft.map(t => median(stat.filter((_, j) => Math.abs(ft[j] - t) <= half)));
     const k = filtfilt(resample(ft, rolled, T), Math.min(0.5, fs / 4), fs);
     for (let i = 0; i < n; i++) { Bx[i] = bx[i]; By[i] = by[i]; K[i] = k[i] / heightM; }
   } else {
@@ -127,7 +181,7 @@ export function analyse(samples, opts = {}) {
       const a = Bp[s.from], b = Bp[s.to];
       segF[j][i] = a.x + s.c * (b.x - a.x); segU[j][i] = a.y + s.c * (b.y - a.y);
       segA[j][i] = Math.atan2(b.x - a.x, -(b.y - a.y));
-      segL[j] += Math.hypot(b.x - a.x, b.y - a.y) / n;
+      if (held[i]) segL[j] += Math.hypot(b.x - a.x, b.y - a.y) / heldCount;
     });
   }
   for (const a of segA) for (let i = 1; i < n; i++) { while (a[i] - a[i - 1] > Math.PI) a[i] -= 2 * Math.PI; while (a[i] - a[i - 1] < -Math.PI) a[i] += 2 * Math.PI; }
@@ -154,8 +208,18 @@ export function analyse(samples, opts = {}) {
   // compared below 2 Hz, where tracking noise (differentiated twice) doesn't swamp it; the same filter both sides
   const fcH = Math.min(2, fs / 4), dH = filtfilt(deriv(Hb, fs), fcH, fs), tg = filtfilt(Float64Array.from(comF, (f) => -G * f), fcH, fs), resid = new Float64Array(n);
   for (let i = 0; i < n; i++) resid[i] = dH[i] - tg[i];
-  const rms = (a) => Math.sqrt(mean(Array.from(a, (v) => v * v)));
-  const consistency = 1 - clamp(rms(resid) / Math.max(G * 0.03, rms(tg)), 0, 1);
+  // Derivatives across a release have no bar-force interpretation. Leave half
+  // a filter cycle at each contact edge, keeping the centre of short bouts.
+  let residualSum = 0, torqueSum = 0, count = 0;
+  for (const { first, last } of bouts) {
+    const pad = Math.min(Math.ceil(fs / (2 * fcH)), Math.floor((last - first) / 4));
+    for (let i = first + pad; i <= last - pad; i++) {
+      residualSum += resid[i] ** 2;
+      torqueSum += tg[i] ** 2;
+      count++;
+    }
+  }
+  const consistency = 1 - clamp(Math.sqrt(residualSum / Math.max(count * (G * 0.03) ** 2, torqueSum)), 0, 1);
 
   // joint angles in the plane: elbow (interior), shoulder and hip as + hollow / − arch, knee bend
   const elbow = new Float64Array(n), shoulder = new Float64Array(n), hipA = new Float64Array(n), knee = new Float64Array(n);
@@ -175,18 +239,18 @@ export function analyse(samples, opts = {}) {
   let uRest = null;
   {
     const run = Math.round(0.4 * fs);
-    for (let i = 0, k = 0; i < n; i++) { if (speed[i] < 0.12 && straight(i)) { if (++k >= run) { uRest = median(comU.slice(i - run + 1, i + 1)); break; } } else k = 0; }
-    if (uRest === null) uRest = quantile(Array.from(comU).filter((_, i) => straight(i)), 0.05);
-    if (!Number.isFinite(uRest)) uRest = quantile(comU, 0.02);
+    for (let i = 0, k = 0; i < n; i++) { if (held[i] && speed[i] < 0.12 && straight(i)) { if (++k >= run) { uRest = median(comU.slice(i - run + 1, i + 1)); break; } } else k = 0; }
+    if (uRest === null) uRest = quantile(Array.from(comU).filter((_, i) => held[i] && straight(i)), 0.05);
+    if (!Number.isFinite(uRest)) uRest = quantile(comU.filter((_, i) => held[i]), 0.02);
   }
   const Erest = G * uRest;
   const Er = Float64Array.from(E, (v) => v - Erest), PEr = Float64Array.from(PE, (v) => v - Erest);
 
   // reps
-  const R = { fs, n, T, t0, tv0, slow, facing, facingFrom: opts.facing ? "you" : fc0.sure ? "body" : "guess", view, c, scale, moving, wander, heightM, kg: opts.kg > 0 ? opts.kg : null,
+  const R = { fs, n, T, t0, tv0, slow, held, bouts, facing, facingFrom: opts.facing ? "you" : fc0.sure ? "body" : "guess", view, c, scale, moving, wander, heightM, kg: opts.kg > 0 ? opts.kg : null,
     pl, img, Bx, By, K, comF, comU, comX, comY, vf, vu, speed, Ff, Fu, Fb, E, Er, PE, PEr, KE, P, Hb, resid, tg, consistency,
-    elbow, shoulder, hip: hipA, knee, uRest, span: [0, n - 1], onBar: [t0, t1], frames: on.length,
-    poseCover: on.length / Math.max(1, (t1 - t0) * fs + 1) };
+    elbow, shoulder, hip: hipA, knee, uRest, span: [0, n - 1], onBar: [t0, t1], frames: attached.length,
+    poseCover: Math.min(1, attached.length / heldCount) };
   R.tVideo = (i) => tv0 + T[clamp(i, 0, n - 1)] * slow;
   R.indexAt = (tv) => clamp(Math.round((real(tv) - t0) * fs), 0, n - 1);
   findReps(R, opts, dHip);
@@ -218,31 +282,51 @@ function findReps(R, opts, dHip) {
    * shrinks only when the arms pull. Side-on, an overhand pull bends the elbows out sideways, towards the camera,
    * where the elbow angle can't be seen, but the reach still shows the pull. */
   const reach = Float64Array.from(uSh, (u, i) => Math.hypot(pl.sh.f[i], u));
-  const arm = quantile(reach, 0.95), dReach = deriv(reach, fs);
+  const arm = quantile(reach.filter((_, i) => R.held[i]), 0.95), dReach = deriv(reach, fs);
   R.reach = reach; R.arm = arm;
-  const hangSh = quantile(Array.from(uSh).filter((_, i) => reach[i] > 0.9 * arm), 0.5);
-  const hangToe = quantile(Array.from(uToe).filter((_, i) => reach[i] > 0.9 * arm && Math.abs(hip[i]) < 30), 0.5);
+  const hangSh = quantile(Array.from(uSh).filter((_, i) => R.held[i] && reach[i] > 0.9 * arm), 0.5);
+  const hangToe = quantile(Array.from(uToe).filter((_, i) => R.held[i] && reach[i] > 0.9 * arm && Math.abs(hip[i]) < 30), 0.5);
   const gap = Math.round(0.6 * fs);
-  const lowBefore = (i) => { let j = i; while (j > 0 && uSh[j - 1] <= uSh[j] + 1e-9) j--; return j; };
+  const lowBefore = (i, first) => { let j = i; while (j > first && uSh[j - 1] <= uSh[j] + 1e-9) j--; return j; };
   const minReach = (a, b) => { let m = Infinity; for (let j = Math.max(0, a); j <= Math.min(n - 1, b); j++) m = Math.min(m, reach[j]); return m; };
-  const pulls = peaks(uSh, 0.12 * H, gap).filter((i) => uSh[i] - (Number.isFinite(hangSh) ? hangSh : uSh[i]) > 0.14 * H && minReach(lowBefore(i), i) < 0.78 * arm);
+  const pulls = [], kicks = [];
   const toeDist = (i) => Math.hypot(pl.toe.f[i], pl.toe.u[i]);
-  const kicks = peaks(uToe, 0.4 * H, gap).filter((i) => hip[i] > 70 && uToe[i] - (Number.isFinite(hangToe) ? hangToe : -H) > 0.45 * H && toeDist(i) < 0.5);
+  for (const { first, last } of R.bouts) {
+    let previous = first;
+    for (const peak of peaks(uSh.subarray(first, last + 1), 0.12 * H, gap)) {
+      const i = first + peak;
+      if (!(uSh[i] - hangSh > 0.14 * H && minReach(lowBefore(i, first), i) < 0.78 * arm)) continue;
+      // A preparatory swing can raise the shoulders while the face stays far below the bar.
+      if (pl.chin.u[i] < -0.15 * H) continue;
+      // An ascent into support must start below the bar, including after a long lockout.
+      if (uSh[i] > 0.12 * H && uSh[argmin(uSh, previous, i)] > -0.12 * H) continue;
+      pulls.push({ i, first, last });
+      previous = i;
+    }
+    for (const peak of peaks(uToe.subarray(first, last + 1), 0.4 * H, gap)) {
+      const i = first + peak;
+      if (hip[i] > 70 && uToe[i] - (Number.isFinite(hangToe) ? hangToe : -H) > 0.45 * H && toeDist(i) < 0.5)
+        kicks.push({ i, first, last });
+    }
+  }
   // the swing: the centre of mass's angle from below the bar
   const swingDeg = Float64Array.from(comF, (f, i) => deg(Math.atan2(f, -comU[i])));
   R.swingDeg = swingDeg;
 
   // the family: feet to the bar, or the body up to it, or neither (swings)
   const fam = kicks.length > pulls.length ? "feet" : pulls.length ? "pull" : "swing";
-  const tops = fam === "feet" ? kicks : fam === "pull" ? pulls : [];
+  const selected = fam === "feet" ? kicks : pulls;
+  const tops = selected.map(p => p.i);
   const reps = [];
   for (let k = 0; k < tops.length; k++) {
     const top = tops[k];
-    const prev = k ? tops[k - 1] : 0, next = k + 1 < tops.length ? tops[k + 1] : n - 1;
+    const { first, last } = selected[k];
+    const hasPrev = k > 0 && selected[k - 1].first === first, hasNext = selected[k + 1]?.first === first;
+    const prev = hasPrev ? tops[k - 1] : first, next = hasNext ? tops[k + 1] : last;
     const sig = fam === "feet" ? uToe : uSh;
     const bottom = argmin(sig, prev, top); // the lowest point before it
-    const begin = k ? bottom : Math.max(0, Math.min(bottom, top - Math.round(1.5 * fs)));
-    const end = k + 1 < tops.length ? argmin(sig, top, next) : Math.min(n - 1, top + Math.round(1.2 * fs));
+    const begin = hasPrev ? bottom : Math.max(first, Math.min(bottom, top - Math.round(1.5 * fs)));
+    const end = hasNext ? argmin(sig, top, next) : Math.min(last, top + Math.round(1.2 * fs));
     const w0 = Math.max(begin, top - Math.round(1.2 * fs));
     // the arms start to pull: going back from the fastest shortening of the reach (before the shortest reach: a
     // muscle-up straightens the arms again at the top), the moment it was still under a fifth of that speed
@@ -257,22 +341,22 @@ function findReps(R, opts, dHip) {
     const cTop = argmax(comU, Math.max(begin, top - Math.round(0.4 * fs)), Math.min(end, top + Math.round(0.4 * fs)));
     const eTop = Er[cTop];
     // the muscles' positive work over the rep's cycle (from the last top, or the start), against lifting the body that high
-    const c0 = k ? reps[k - 1].cTop : 0;
+    const c0 = hasPrev ? reps[k - 1].cTop : first;
     let wPos = 0;
     for (let i = c0; i <= cTop; i++) if (P[i] > 0) wPos += P[i] / fs;
     const iF = argmax(Fb, w0, top);
     const pPeak = argmax(P, w0, top);
-    const kept = k + 1 < tops.length ? Math.max(0, Er[argmin(Er, cTop, tops[k + 1])]) / Math.max(1e-6, eTop) : null;
+    const kept = hasNext ? Math.max(0, Er[argmin(Er, cTop, tops[k + 1])]) / Math.max(1e-6, eTop) : null;
     reps.push({
-      n: k + 1, begin, bottom, top, end, cTop, onset, snap,
+      n: k + 1, begin, bottom, top, end, cTop, onset, snap, first, last,
       hipsFirst: (onset - snap) / fs, snapDir: Math.sign(dHip[snap]) || 1,
       fromKip: eTop > 0.3 ? clamp(Er[onset] / eTop, 0, 1) : null,
       work: wPos, workRatio: PEr[cTop] > 0.3 ? wPos / PEr[cTop] : null,
       rise: comU[cTop] - R.uRest, eTop,
       peakForce: Fb[iF], iF, peakPower: P[pPeak], meanPower: mean(P, bottom, top),
-      kept, cycle: k ? (top - tops[k - 1]) / fs : null,
+      kept, cycle: hasPrev ? (top - tops[k - 1]) / fs : null,
       kipping: rangeOf(hip, w0, top) > 30, // the kip is a hip action: a strict rep moves the body sideways too (the head has to clear the bar)
-      hang: reach[argmax(reach, k ? tops[k - 1] : 0, Math.max(k ? tops[k - 1] : 0, onset))] / arm, // 1 = arms fully long
+      hang: reach[argmax(reach, prev, Math.max(prev, onset))] / arm, // 1 = arms fully long
     });
   }
   R.fam = fam; R.reps = reps; R.tops = tops; R.hangSh = hangSh; R.hangToe = hangToe;
@@ -288,10 +372,10 @@ const CHEST_FWD = 0.06, CHEST_DOWN = 0.04; // × stature: the front of the chest
 function standardsOf(R, r) {
   const { pl, elbow, heightM: H } = R;
   const i = r.top;
-  const chinU = Math.max(...range(r.top - 3, r.top + 3, R.n).map((j) => pl.chin.u[j]));
+  const chinU = Math.max(...range(Math.max(r.first, r.top - 3), Math.min(r.last, r.top + 3), R.n).map((j) => pl.chin.u[j]));
   // closest the chest comes to the bar around the top
   let chest = Infinity;
-  for (const j of range(r.top - Math.round(0.3 * R.fs), r.top + Math.round(0.3 * R.fs), R.n)) {
+  for (const j of range(Math.max(r.first, r.top - Math.round(0.3 * R.fs)), Math.min(r.last, r.top + Math.round(0.3 * R.fs)), R.n)) {
     const sh = { f: pl.sh.f[j], u: pl.sh.u[j] }, hp = { f: pl.hip.f[j], u: pl.hip.u[j] };
     const L = Math.hypot(hp.f - sh.f, hp.u - sh.u) || 1, down = { f: (hp.f - sh.f) / L, u: (hp.u - sh.u) / L }, fwd = { f: -down.u, u: down.f };
     const sgn = fwd.f >= 0 ? 1 : -1; // the forward normal points the way the athlete faces
@@ -299,12 +383,12 @@ function standardsOf(R, r) {
     chest = Math.min(chest, Math.hypot(p.f, p.u));
   }
   let feet = Infinity;
-  for (const j of range(r.top - 3, r.top + 3, R.n)) feet = Math.min(feet, Math.hypot(pl.toe.f[j], pl.toe.u[j]));
+  for (const j of range(Math.max(r.first, r.top - 3), Math.min(r.last, r.top + 3), R.n)) feet = Math.min(feet, Math.hypot(pl.toe.f[j], pl.toe.u[j]));
   const shTop = pl.sh.u[i];
   // a muscle-up's lockout: the highest the shoulders get above the bar, arms straight there
-  const lock = shTop > 0.08 * H ? R.reach[argmax(pl.sh.u, Math.max(0, i - 5), Math.min(R.n - 1, i + 5))] / R.arm : null; // arms' length in support, × hanging
+  const lock = shTop > 0.08 * H ? R.reach[argmax(pl.sh.u, Math.max(r.first, i - 5), Math.min(r.last, i + 5))] / R.arm : null; // arms' length in support, × hanging
   let heelsBack = null;
-  if (R.fam === "feet") { heelsBack = Infinity; for (let j = Math.max(0, r.begin - Math.round(0.5 * R.fs)); j <= r.top; j++) heelsBack = Math.min(heelsBack, pl.heel.f[j]); }
+  if (R.fam === "feet") { heelsBack = Infinity; for (let j = Math.max(r.first, r.begin - Math.round(0.5 * R.fs)); j <= r.top; j++) heelsBack = Math.min(heelsBack, pl.heel.f[j]); }
   return { chinU, chest, feet, shTop, lock, heelsBack };
 }
 const range = (a, b, n) => { const o = []; for (let i = Math.max(0, a); i <= Math.min(n - 1, b); i++) o.push(i); return o; };
@@ -358,25 +442,28 @@ function report(R, opts) {
   const bw = tr("unit.bw");
 
   // the swing alone
-  const sw = R.swingDeg, ext = peaks(Float64Array.from(sw, Math.abs), 4, Math.round(0.4 * fs));
+  const sw = R.swingDeg, amplitude = Float64Array.from(sw, Math.abs);
+  const turns = R.bouts.map(b => peaks(amplitude.subarray(b.first, b.last + 1), 4, Math.round(0.4 * fs)).map(i => b.first + i));
+  const ext = turns.flat(), swingsCount = turns.reduce((sum, p) => sum + Math.floor(p.length / 2), 0);
   R.swingExt = ext;
-  const amp = ext.length ? Math.max(...ext.map((i) => Math.abs(sw[i]))) : rangeOf(sw, 0, R.n - 1) / 2;
+  const amp = ext.length ? Math.max(...ext.map((i) => Math.abs(sw[i]))) : Math.max(...R.bouts.map(b => rangeOf(sw, b.first, b.last))) / 2;
 
   if (move === "swing" || !reps.length) {
     const ePer = [];
-    for (let k = 1; k < ext.length; k++) ePer.push(R.Er[ext[k]] - R.Er[ext[k - 1]]);
-    const hs = quantile(R.hip, 0.97) - quantile(R.hip, 0.03), shs = quantile(R.shoulder, 0.97) - quantile(R.shoulder, 0.03);
-    tile("swings", String(Math.floor(ext.length / 2)), "");
+    for (let k = 1; k < ext.length; k++) if (R.bouts.some(b => b.first <= ext[k - 1] && ext[k] <= b.last)) ePer.push(R.Er[ext[k]] - R.Er[ext[k - 1]]);
+    const hip = R.hip.filter((_, i) => R.held[i]), shoulder = R.shoulder.filter((_, i) => R.held[i]);
+    const hs = quantile(hip, 0.97) - quantile(hip, 0.03), shs = quantile(shoulder, 0.97) - quantile(shoulder, 0.03);
+    tile("swings", String(swingsCount), "");
     tile("swingSize", num(amp, 0), "°");
     tile("hipRange", num(hs, 0), "°");
     tile("shoulderRange", num(shs, 0), "°");
     put("swing", "largestSwing", amp, "°", tr("metric.largestSwing.note"));
-    put("swing", "heightGained", Math.max(0, quantile(R.comU, 0.98) - R.uRest) * 100, "cm", tr("metric.heightGained.note"));
+    put("swing", "heightGained", Math.max(0, quantile(R.comU.filter((_, i) => R.held[i]), 0.98) - R.uRest) * 100, "cm", tr("metric.heightGained.note"));
     if (ePer.length) put("swing", "halfSwing", median(ePer) * (kgW || 1), kgW ? "J" : "J/kg", tr("metric.halfSwing.note"));
-    put("shape", "hipHollow", quantile(R.hip, 0.98), "°", tr("metric.hipHollow.note"));
-    put("shape", "hipArch", quantile(R.hip, 0.02), "°");
-    put("shape", "shHollow", quantile(R.shoulder, 0.98), "°", tr("metric.shHollow.note"));
-    put("shape", "shArch", quantile(R.shoulder, 0.02), "°");
+    put("shape", "hipHollow", quantile(hip, 0.98), "°", tr("metric.hipHollow.note"));
+    put("shape", "hipArch", quantile(hip, 0.02), "°");
+    put("shape", "shHollow", quantile(shoulder, 0.98), "°", tr("metric.shHollow.note"));
+    put("shape", "shArch", quantile(shoulder, 0.02), "°");
     if (hs < 25) check("warning", "coaching", "smallHollow", { deg: Math.round(hs) });
     else check("good", "coaching", "hollowArch", { hip: Math.round(hs), sh: Math.round(shs) });
     if (ePer.length >= 2) {
@@ -400,7 +487,8 @@ function report(R, opts) {
     if (!kipping || move === "t2b") tile("work", wr.length ? String(Math.round(100 * median(wr))) : "–", "%");
 
     put("set", "reps", reps.length, "", unsure ? tr("metric.reps.noteUnsure", { n: valid, unsure }) : tr("metric.reps.note", { n: valid }));
-    if (reps.length > 1) put("set", "timePerRep", median(reps.slice(1).map((r) => r.cycle)), "s", tr("metric.timePerRep.note"));
+    const cycles = reps.map(r => r.cycle).filter(Number.isFinite);
+    if (cycles.length) put("set", "timePerRep", median(cycles), "s", tr("metric.timePerRep.note"));
     put("set", "style", kipping ? 1 : 0, "", tr(kipping ? "metric.style.kipping" : "metric.style.strict"));
     put("energy", "comRise", median(reps.map((r) => r.rise)) * 100, "cm", tr("metric.comRise.note"));
     put("energy", "energyTop", median(reps.map((r) => r.eTop)) * (kgW || 1), kgW ? "J" : "J/kg", tr("metric.energyTop.note"));
@@ -477,14 +565,14 @@ function report(R, opts) {
   put("filming", "camera", a, "°", tr(`metric.camera.${how}`));
   put("filming", "consistency", cons * 100, "%", tr("metric.consistency.note"));
   put("filming", "frameRate", fps, "fps");
-  put("filming", "analysed", R.onBar[1] - R.onBar[0], "s", tr("metric.analysed.note"));
+  put("filming", "analysed", R.bouts.reduce((seconds, b) => seconds + (b.last - b.first) / fs, 0), "s", tr("metric.analysed.note"));
 
   // the title: the movement, then the count (the gallery splits them at " · ")
   const swings = move === "swing" || !reps.length;
   const name = swings ? MOVES.swing
     : kipping && move !== "bmu" && move !== "t2b" ? tr("title.kipping", { move: MOVES[move] })
       : !kipping && move !== "t2b" ? tr("title.strict", { move: MOVES[move] }) : MOVES[move];
-  R.title = `${name} · ${swings ? tr("count.swings", { n: Math.floor(ext.length / 2) }) : tr("count.reps", { n: reps.length })}`;
+  R.title = `${name} · ${swings ? tr("count.swings", { n: swingsCount }) : tr("count.reps", { n: reps.length })}`;
   R.tiles = tiles; R.checks = checks; R.film = film; R.notes = notes; R.metrics = metrics;
   // stages for the timing bar: per rep, drive (bottom → top) and down (top → next bottom)
   const stages = [];

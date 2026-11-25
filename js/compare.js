@@ -11,6 +11,7 @@ import { tr, num } from "./i18n.js";
 import * as V from "./video.js";
 import * as Ov from "./overlay.js";
 import { tok, clamp, setup, ticks, fmt, dot, label, dotBox, scrub } from "./chartkit.js";
+import { contactPath } from "./kipcharts.js";
 import { when } from "./gallery.js";
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
@@ -199,7 +200,9 @@ export class Compare {
   /* drawing */
   overlay(l) {
     const { R } = l, i = R.indexAt(l.video.currentTime), trail = [];
-    for (let j = Math.max(0, i - Math.round(TRAIL_S * R.fs)); j <= i; j++) trail.push({ x: R.comX[j], y: R.comY[j], k: null });
+    if (!R.held[i]) { Ov.draw(l.canvas, { W: l.W, H: l.H }); return; }
+    const bout = R.bouts.find(b => b.first <= i && i <= b.last);
+    for (let j = Math.max(bout.first, i - Math.round(TRAIL_S * R.fs)); j <= i; j++) trail.push({ x: R.comX[j], y: R.comY[j], k: null });
     Ov.draw(l.canvas, { W: l.W, H: l.H, bar: { x: R.Bx[i], y: R.By[i] }, com: { x: R.comX[i], y: R.comY[i] }, trail, color: tok(l.color) });
   }
   /** after a resize or a theme change, once every video is loaded */
@@ -281,7 +284,7 @@ function fitPart(R) {
 function drawPaths(canvas, L, tau, C) {
   const w0 = canvas.parentElement.clientWidth;
   let fl = -0.2, fr = 0.2, ub = 0.15, ul = -0.3;
-  for (const { R } of L) for (let i = 0; i < R.n; i++) { fl = Math.min(fl, R.comF[i]); fr = Math.max(fr, R.comF[i]); ul = Math.min(ul, R.comU[i]); ub = Math.max(ub, R.comU[i]); }
+  for (const { R } of L) for (let i = 0; i < R.n; i++) { if (!R.held[i]) continue; fl = Math.min(fl, R.comF[i]); fr = Math.max(fr, R.comF[i]); ul = Math.min(ul, R.comU[i]); ub = Math.max(ub, R.comU[i]); }
   fl -= 0.08; fr += 0.08; ub += 0.08; ul -= 0.08;
   const m = { l: 38, r: 10, t: 22, b: 34 };
   const k = Math.min((w0 - m.l - m.r) / (fr - fl), 460 / (ub - ul)); // one scale both ways: the paths' true shape
@@ -310,18 +313,19 @@ function drawPaths(canvas, L, tau, C) {
   for (const { R, color } of L) {
     ctx.strokeStyle = tok(color);
     ctx.beginPath();
-    for (let i = 0; i < R.n; i++) (i ? ctx.lineTo : ctx.moveTo).call(ctx, px(R.comF[i]), py(R.comU[i]));
+    contactPath(ctx, R, i => px(R.comF[i]), i => py(R.comU[i]));
     ctx.stroke();
   }
   ctx.beginPath(); ctx.arc(px(0), py(0), 5, 0, 7); ctx.fillStyle = tok("--surface"); ctx.fill();
   ctx.lineWidth = 2.5; ctx.strokeStyle = tok("--ink"); ctx.stroke();
   const placed = [dotBox(px(0), py(0), 6)];
-  for (const l of L) { const i = C.idx(l, tau); dot(ctx, px(l.R.comF[i]), py(l.R.comU[i]), 5, tok(l.color)); placed.push(dotBox(px(l.R.comF[i]), py(l.R.comU[i]), 5)); }
+  for (const l of L) { const i = C.idx(l, tau); if (!l.R.held[i]) continue; dot(ctx, px(l.R.comF[i]), py(l.R.comU[i]), 5, tok(l.color)); placed.push(dotBox(px(l.R.comF[i]), py(l.R.comU[i]), 5)); }
   label(ctx, tr("chart.bar"), px(0), py(0), "right", w, placed);
   return {
     tauAt(x, y) { // the nearest point of any path
       let best = null, bd = Infinity;
       for (const { R, mark } of L) for (let i = 0; i < R.n; i++) {
+        if (!R.held[i]) continue;
         const d = (px(R.comF[i]) - x) ** 2 + (py(R.comU[i]) - y) ** 2;
         if (d < bd) { bd = d; best = (i - mark.i) / R.fs; }
       }
@@ -335,7 +339,7 @@ function drawHips(canvas, L, tau, C) {
   const h = 220;
   const { ctx, w } = setup(canvas, h);
   let lo = 0, hi = 0;
-  for (const { R } of L) { const [a, b] = fitPart(R); for (let i = a; i <= b; i++) { lo = Math.min(lo, R.hip[i]); hi = Math.max(hi, R.hip[i]); } }
+  for (const { R } of L) { const [a, b] = fitPart(R); for (let i = a; i <= b; i++) { if (!R.held[i]) continue; lo = Math.min(lo, R.hip[i]); hi = Math.max(hi, R.hip[i]); } }
   const pad = 0.08 * (hi - lo || 1);
   lo -= pad; hi += pad;
   const m = { l: 38, r: 10, t: 20, b: 24 };
@@ -366,12 +370,12 @@ function drawHips(canvas, L, tau, C) {
   for (const { R, mark, color } of L) {
     ctx.strokeStyle = tok(color);
     ctx.beginPath();
-    for (let i = 0; i < R.n; i++) (i ? ctx.lineTo : ctx.moveTo).call(ctx, px((i - mark.i) / R.fs), py(R.hip[i]));
+    contactPath(ctx, R, i => px((i - mark.i) / R.fs), i => py(R.hip[i]));
     ctx.stroke();
   }
   ctx.restore();
   ctx.strokeStyle = tok("--ink-2"); ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(Math.round(px(tau)) + 0.5, m.t); ctx.lineTo(Math.round(px(tau)) + 0.5, h - m.b); ctx.stroke();
-  for (const l of L) { const i = C.idx(l, tau); dot(ctx, px((i - l.mark.i) / l.R.fs), clamp(py(l.R.hip[i]), m.t, h - m.b), 4, tok(l.color)); }
+  for (const l of L) { const i = C.idx(l, tau); if (!l.R.held[i]) continue; dot(ctx, px((i - l.mark.i) / l.R.fs), clamp(py(l.R.hip[i]), m.t, h - m.b), 4, tok(l.color)); }
   return { tauAt: (x) => C.lo + clamp((x - m.l) / (w - m.l - m.r), 0, 1) * (C.hi - C.lo) };
 }
